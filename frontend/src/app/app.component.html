@@ -1,0 +1,529 @@
+<div
+  class="app-shell"
+  [class.is-narrow]="isNarrow()"
+  [class.pane-library]="isNarrow() && mobilePane() === 'library'"
+  [class.pane-inspect]="isNarrow() && mobilePane() === 'inspect'"
+>
+  <header class="topbar">
+    @if (isNarrow()) {
+      <button type="button" class="icon-btn" (click)="openLibrary()" title="Библиотека" aria-label="Библиотека">☰</button>
+    }
+    <div class="brand">
+      <span class="logo">ETI</span>
+      <span class="title">Panel Designer</span>
+    </div>
+
+    <div class="project-info">
+      <input class="proj-name" [ngModel]="projectName()" (ngModelChange)="projectName.set($event)" placeholder="Име на проект" />
+      <input class="client-name" [ngModel]="clientName()" (ngModelChange)="clientName.set($event)" placeholder="Клиент" />
+    </div>
+
+    <div class="toolbar" [class.open]="overflowOpen()">
+      <button (click)="undo(); closeOverlays()" [disabled]="store.undoAvailable() === 0" title="Отмени">↶</button>
+      <button (click)="redo(); closeOverlays()" [disabled]="store.redoAvailable() === 0" title="Върни">↷</button>
+      <button (click)="autoArrange(); closeOverlays()" title="Автоматично подреждане">Подреди</button>
+      <span class="sep"></span>
+      <button class="primary" (click)="generateWiring(); closeOverlays()" title="Генерира гребенни шини, L/N/PE връзки и кръгове. Ръчните връзки се запазват.">
+        Окабеляване
+      </button>
+      <button
+        [class.toggled]="connectMode()"
+        (click)="toggleConnectMode(); closeOverlays()"
+        title="Създай връзка: кликни източник, после приемник"
+      >
+        Връзка
+      </button>
+      <span class="sep"></span>
+      <button (click)="newProject(); closeOverlays()">Нов</button>
+      <button class="primary" (click)="saveProject(); closeOverlays()">Запази</button>
+      <button (click)="saveVersion(); closeOverlays()">+ Версия</button>
+      <span class="sep"></span>
+      <button (click)="export('pdf'); closeOverlays()">PDF</button>
+      <button (click)="export('excel'); closeOverlays()">Excel</button>
+      <button (click)="export('csv'); closeOverlays()">CSV</button>
+    </div>
+    @if (isNarrow()) {
+      <button type="button" class="icon-btn" (click)="toggleOverflow()" title="Действия" aria-label="Действия">⋯</button>
+    }
+  </header>
+
+  @if (statusMessage()) {
+    <div class="status-toast">{{ statusMessage() }}</div>
+  }
+
+  <div class="main">
+    @if (isNarrow() && (mobilePane() !== 'canvas' || overflowOpen())) {
+      <div class="drawer-backdrop" (click)="closeOverlays()"></div>
+    }
+
+    <aside class="sidebar">
+      <div class="drawer-head">
+        <strong>Библиотека</strong>
+        <button type="button" class="icon-btn" (click)="showCanvas()" aria-label="Затвори">×</button>
+      </div>
+      <nav class="tabs">
+        <button [class.active]="activePanel() === 'catalog'" (click)="activePanel.set('catalog')">Каталог</button>
+        <button [class.active]="activePanel() === 'groups'" (click)="activePanel.set('groups')">Групи</button>
+        <button [class.active]="activePanel() === 'configurator'" (click)="activePanel.set('configurator')">Конфигуратор</button>
+        <button [class.active]="activePanel() === 'circuits'" (click)="activePanel.set('circuits')">Кръгове</button>
+        <button [class.active]="activePanel() === 'projects'" (click)="activePanel.set('projects')">Проекти</button>
+        <button [class.active]="activePanel() === 'prices'" (click)="activePanel.set('prices')">Цени</button>
+      </nav>
+
+      @switch (activePanel()) {
+        @case ('catalog') {
+          <div class="panel">
+            <div class="filters">
+              <input placeholder="Търси..." [ngModel]="search()" (ngModelChange)="search.set($event)" (keyup.enter)="onSearchChange()" />
+              <select [ngModel]="selectedSeries()" (ngModelChange)="selectedSeries.set($event); onSearchChange()">
+                <option value="">Всички серии</option>
+                @for (s of series(); track s) {
+                  <option [value]="s">{{ s }}</option>
+                }
+              </select>
+            </div>
+            <label class="eplan-import">
+              <input type="file" accept=".xml" (change)="onEplanFile($event)" hidden />
+              Импорт на EPLAN XML
+            </label>
+            <div class="product-list">
+              @for (p of products(); track p.id) {
+                <div class="product-card" (click)="addProduct(p)">
+                  <div class="pc-head">
+                    <strong>{{ p.name }}</strong>
+                    <span class="badge" [class.verified]="p.verified">{{ p.verified ? '✓' : '?' }}</span>
+                  </div>
+                  <div class="pc-meta">
+                    <span>{{ p.series }}</span>
+                    @if (p.rated_current_a) { <span>{{ num(p.rated_current_a) }}A</span> }
+                    @if (p.poles) { <span>{{ p.poles }}P</span> }
+                    <span>{{ p.width_modules }} мод</span>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+        @case ('groups') {
+          <div class="panel">
+            <p class="panel-hint">
+              Готова група се добавя с едно кликване и се мести като едно цяло.
+              Можете да запазите и свои комбинации от текущото табло.
+            </p>
+
+            <div class="group-save">
+              <strong>Моя група</strong>
+              <input
+                placeholder="Име, напр. Осветление етаж 1"
+                [ngModel]="newGroupName()"
+                (ngModelChange)="newGroupName.set($event)"
+              />
+              <input
+                placeholder="Кратко описание (по избор)"
+                [ngModel]="newGroupDescription()"
+                (ngModelChange)="newGroupDescription.set($event)"
+              />
+              <button class="primary" (click)="saveCustomGroup()">
+                Запази апаратите от таблото като група
+              </button>
+            </div>
+
+            @if (customGroups().length) {
+              <h5 class="group-section">Мои групи</h5>
+              @for (g of customGroups(); track g.id) {
+                <div class="group-card group-card--mine" (click)="addGroup(g)">
+                  <div class="group-card__top">
+                    <strong>{{ g.name }}</strong>
+                    <button class="group-del" (click)="deleteCustomGroup(g, $event)" title="Изтрий">×</button>
+                  </div>
+                  <p>{{ g.description }}</p>
+                  <span class="count">{{ g.items.length }} компонента · кликни за добавяне</span>
+                </div>
+              }
+            }
+
+            <h5 class="group-section">Готови ETI групи</h5>
+            @for (g of factoryGroups(); track g.id) {
+              <div class="group-card" (click)="addGroup(g)">
+                <strong>{{ g.name }}</strong>
+                <p>{{ g.description }}</p>
+                <span class="count">{{ g.items.length }} компонента · кликни за добавяне</span>
+              </div>
+            }
+            @if (factoryGroups().length === 0 && customGroups().length === 0) {
+              @for (g of groups(); track g.id) {
+                <div class="group-card" (click)="addGroup(g)">
+                  <strong>{{ g.name }}</strong>
+                  <p>{{ g.description }}</p>
+                  <span class="count">{{ g.items.length }} компонента · кликни за добавяне</span>
+                </div>
+              }
+            }
+          </div>
+        }
+        @case ('projects') {
+          <div class="panel">
+            @if (projects().length === 0) {
+              <p class="panel-hint">Още няма запазени проекти.</p>
+            }
+            @for (proj of projects(); track proj.id) {
+              <div class="project-card" [class.active]="currentProjectId() === proj.id" (click)="openProject(proj.id)">
+                <div>
+                  <strong>{{ proj.name }}</strong>
+                  <div class="pc-sub">{{ proj.client_name || 'без клиент' }} · v{{ proj.current_version }}</div>
+                </div>
+                <div class="proj-actions">
+                  <button (click)="duplicateProject(proj.id, $event)" title="Дублирай">⧉</button>
+                  <button (click)="deleteProject(proj.id, $event)" title="Изтрий">🗑</button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+        @case ('configurator') {
+          <app-configurator [catalog]="products()" (applyResult)="applyConfiguration($event)" />
+        }
+        @case ('circuits') {
+          <div class="panel">
+            @if (store.circuits().length === 0) {
+              <p class="panel-hint">
+                Кръгът е изходящата линия след автомата: означение, товар, кабел (вид и сечение) и пад на напрежение.
+                Първо генерирайте окабеляване или пуснете конфигуратора.
+              </p>
+            } @else {
+              <p class="panel-hint">
+                {{ store.circuits().length }} изходящи кръга. Името и описанието са за легендата
+                на схемата. Дължината и сечението преизчисляват ΔU автоматично (предупреждение над 4%).
+              </p>
+              <div class="circuit-list">
+                @for (circuit of store.circuits(); track circuit.id) {
+                  <div class="circuit-card">
+                    <div class="cc-head">
+                      <span class="cc-num">{{ circuit.number }}</span>
+                      <input
+                        class="cc-name"
+                        [value]="circuit.name"
+                        (input)="updateCircuitName(circuit.id, $any($event.target).value)"
+                        placeholder="Име на кръга, напр. Осветление кухня"
+                      />
+                    </div>
+                    @if (circuit.description) {
+                      <p class="cc-desc">{{ circuit.description }}</p>
+                    }
+                    <div class="cc-conductors">
+                      @for (c of circuit.conductors; track c) {
+                        <span class="cc-cond" [attr.data-c]="c">{{ c }}</span>
+                      }
+                    </div>
+                    <div class="cc-fields">
+                      <label>
+                        kW
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          [value]="circuit.loadKw"
+                          (input)="updateCircuitLoad(circuit.id, $any($event.target).value)"
+                        />
+                      </label>
+                      <label>
+                        m
+                        <input
+                          type="number"
+                          min="1"
+                          [value]="circuit.lengthM"
+                          (input)="updateCircuitLength(circuit.id, $any($event.target).value)"
+                        />
+                      </label>
+                    </div>
+                    <div class="cc-cable">
+                      <label>
+                        Вид кабел
+                        <select
+                          [value]="circuitKind(circuit)"
+                          (change)="updateCircuitCableKind(circuit.id, $any($event.target).value)"
+                        >
+                          @for (kind of cableKindsFor(circuit); track kind.id) {
+                            <option [value]="kind.id" [title]="kind.hint">{{ kind.label }}</option>
+                          }
+                        </select>
+                      </label>
+                      <label>
+                        Сечение
+                        <select
+                          [value]="circuit.cableCrossSectionMm2"
+                          (change)="updateCircuitCrossSection(circuit.id, $any($event.target).value)"
+                        >
+                          @for (mm of cableSectionsFor(circuit); track mm) {
+                            <option [value]="mm">{{ mm }} mm²</option>
+                          }
+                        </select>
+                      </label>
+                    </div>
+                    <div class="cc-foot">
+                      <span>{{ circuit.cableType }}</span>
+                      <span
+                        class="cc-drop"
+                        [class.bad]="(circuit.voltageDropPercent ?? 0) > 4"
+                      >ΔU {{ circuit.voltageDropPercent }}%</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+        @case ('prices') {
+          <app-price-import />
+        }
+      }
+    </aside>
+
+    <section class="canvas-area">
+      <div class="view-switch">
+        <button [class.active]="workspace() === 'layout'" (click)="setWorkspace('layout')">
+          Разположение
+        </button>
+        <button [class.active]="workspace() === 'schematic'" (click)="setWorkspace('schematic')">
+          Еднолинейна схема
+        </button>
+        <span class="view-metrics">
+          <span title="Запълване на таблото">Запълване {{ store.fillPercent() }}%</span>
+          <span title="Отделяна топлинна мощност">{{ store.totalHeatW() }} W</span>
+          @if (errorCount() > 0) {
+            <span class="chip chip--error">{{ errorCount() }} грешки</span>
+          }
+          @if (warningCount() > 0) {
+            <span class="chip chip--warn">{{ warningCount() }} предупреждения</span>
+          }
+        </span>
+      </div>
+
+      @if (workspace() === 'layout') {
+        <div class="enclosure-bar">
+          <span>Корпус:</span>
+          @for (preset of enclosurePresets; track preset.catalogNumber) {
+            <button
+              class="enc-btn"
+              [class.active]="store.enclosure().name === preset.name"
+              (click)="onEnclosureChange(preset)"
+            >
+              {{ preset.name }}
+            </button>
+          }
+          <span class="legend-wires">
+            <span class="lw" data-c="L1">L1</span>
+            <span class="lw" data-c="L2">L2</span>
+            <span class="lw" data-c="L3">L3</span>
+            <span class="lw" data-c="N">N</span>
+            <span class="lw" data-c="PE">PE</span>
+          </span>
+        </div>
+        <div class="layer-bar" title="Слоеве като в CAD — включвайте само това, което ви трябва">
+          <span>Слоеве:</span>
+          <button class="layer-preset" (click)="setLayerPreset('all')">Всички</button>
+          <button class="layer-preset" (click)="setLayerPreset('devices')">Само апаратура</button>
+          <button class="layer-preset" (click)="setLayerPreset('wiring')">Кабели</button>
+          @for (layer of layerMeta; track layer.id) {
+            <button
+              class="layer-chip"
+              [class.on]="layers()[layer.id]"
+              [title]="layer.hint"
+              (click)="toggleLayer(layer.id)"
+            >
+              {{ layer.label }}
+            </button>
+          }
+        </div>
+        <app-panel-editor
+          [layers]="layers()"
+          [connectMode]="connectMode()"
+          [selectedWireId]="selectedWireId()"
+          (selectComponent)="onSelect($event)"
+          (selectWire)="onSelectWire($event)"
+          (connectionChange)="onConnectionChange($event)"
+          (removeRequest)="onRemove($event)"
+        />
+      } @else {
+        <app-single-line-diagram />
+      }
+    </section>
+
+    <aside class="inspector">
+      <div class="drawer-head">
+        <strong>Сметка и проверки</strong>
+        <button type="button" class="icon-btn" (click)="showCanvas()" aria-label="Затвори">×</button>
+      </div>
+      @if (selectedLive(); as sel) {
+        <div class="inspector-block">
+          <h4>Избран апарат</h4>
+          <label>Означение
+            <input [ngModel]="sel.label" (ngModelChange)="updateSelectedLabel($event)" />
+          </label>
+          <div class="detail-row"><span>Наименование</span><span>{{ sel.name }}</span></div>
+          <div class="detail-row"><span>Кат. номер</span><span>{{ sel.catalogNumber }}</span></div>
+          <div class="detail-row"><span>Серия</span><span>{{ sel.series }}</span></div>
+          @if (sel.ratedCurrentA) {
+            <div class="detail-row"><span>Ном. ток</span><span>{{ sel.ratedCurrentA }} A</span></div>
+          }
+          @if (sel.tripCurve) {
+            <div class="detail-row"><span>Характеристика</span><span>{{ sel.tripCurve }}</span></div>
+          }
+          @if (sel.poles) {
+            <div class="detail-row"><span>Полюси</span><span>{{ sel.poles }}P</span></div>
+          }
+          @if (sel.residualCurrentA) {
+            <div class="detail-row">
+              <span>Ток на утечка</span><span>{{ sel.residualCurrentA * 1000 }} mA</span>
+            </div>
+          }
+          @if (sel.heatDissipationW) {
+            <div class="detail-row"><span>Загуби</span><span>{{ sel.heatDissipationW }} W</span></div>
+          }
+          <div class="detail-row"><span>Ширина</span><span>{{ sel.widthModules }} мод</span></div>
+          <div class="detail-row"><span>Ред / модул</span><span>{{ sel.row + 1 }} / {{ sel.startModule + 1 }}</span></div>
+          @if (sel.groupId) { <div class="group-tag">Част от група</div> }
+          <label>Захранван от
+            <select
+              name="feedFrom"
+              [ngModel]="sel.feedFromUid ?? ''"
+              (ngModelChange)="setSelectedFeed($event)"
+            >
+              <option value="">Няма връзка</option>
+              @for (c of feedCandidates(); track c.uid) {
+                <option [value]="c.uid">{{ c.label }} — {{ c.name }}</option>
+              }
+            </select>
+          </label>
+          @if (sel.omitNeutralDrop) {
+            <button type="button" (click)="restoreBarDrop('N')">Възстанови N към шината</button>
+          }
+          @if (sel.omitPeDrop) {
+            <button type="button" (click)="restoreBarDrop('PE')">Възстанови PE към шината</button>
+          }
+          @if (selectedCircuit(); as circuit) {
+            <label>Вид кабел
+              <select
+                [value]="circuitKind(circuit)"
+                (change)="updateCircuitCableKind(circuit.id, $any($event.target).value)"
+              >
+                @for (kind of cableKindsFor(circuit); track kind.id) {
+                  <option [value]="kind.id">{{ kind.label }} — {{ kind.hint }}</option>
+                }
+              </select>
+            </label>
+            <label>Сечение
+              <select
+                [value]="circuit.cableCrossSectionMm2"
+                (change)="updateCircuitCrossSection(circuit.id, $any($event.target).value)"
+              >
+                @for (mm of cableSectionsFor(circuit); track mm) {
+                  <option [value]="mm">{{ mm }} mm²</option>
+                }
+              </select>
+            </label>
+            <div class="detail-row">
+              <span>Кабел</span><span>{{ circuit.cableType }}</span>
+            </div>
+            <div class="detail-row">
+              <span>ΔU</span>
+              <span [class.bad-drop]="(circuit.voltageDropPercent ?? 0) > 4">{{ circuit.voltageDropPercent }}%</span>
+            </div>
+          }
+          <button class="danger" (click)="removeSelected()">Премахни</button>
+        </div>
+      } @else {
+        @if (selectedWire(); as pickedWire) {
+          <div class="inspector-block">
+            <h4>Избрана връзка</h4>
+            <div class="detail-row"><span>Маркировка</span><span>{{ pickedWire.wireNumber }}</span></div>
+            <div class="detail-row"><span>Жила</span><span>{{ pickedWire.conductor }} · {{ pickedWire.crossSectionMm2 }} mm²</span></div>
+            <div class="detail-row"><span>От</span><span>{{ wireEndpointLabel(pickedWire.from.componentUid) }}</span></div>
+            <div class="detail-row"><span>Към</span><span>{{ wireEndpointLabel(pickedWire.to.componentUid) }}</span></div>
+            @if (pickedWire.note) {
+              <div class="detail-row"><span>Бележка</span><span>{{ pickedWire.note }}</span></div>
+            }
+            <p class="panel-hint">Delete изтрива връзката. При захранващ проводник се маха цялото захранване към апарата.</p>
+            <button class="danger" (click)="deleteSelectedWire()">Изтрий връзката</button>
+          </div>
+        } @else {
+          <div class="inspector-block empty">
+            <p>Докоснете апарат или връзка за детайли.<br />Режим „Връзка“ — създаване на нова връзка.</p>
+          </div>
+        }
+      }
+
+      @if (warnings().length) {
+        <div class="inspector-block checks-block">
+          <h4>Инженерни проверки</h4>
+          @for (warning of warnings(); track warning.id) {
+            <div class="check" [class]="'check--' + warning.severity">
+              <span class="check-icon">
+                {{ warning.severity === 'error' ? '!' : warning.severity === 'warning' ? '⚠' : 'i' }}
+              </span>
+              <span class="check-msg">{{ warning.message }}</span>
+            </div>
+          }
+        </div>
+      }
+
+      @if (store.wiring().generatedAt) {
+        <div class="inspector-block wiring-block">
+          <h4>Окабеляване</h4>
+          <div class="detail-row">
+            <span>Проводници</span><span>{{ store.wiring().wires.length }}</span>
+          </div>
+          <div class="detail-row">
+            <span>Гребенни шини</span><span>{{ store.wiring().busbars.length }}</span>
+          </div>
+          <div class="detail-row">
+            <span>Изходящи кръгове</span><span>{{ store.wiring().circuits.length }}</span>
+          </div>
+          @for (bar of store.wiring().bars; track bar.id) {
+            <div class="detail-row">
+              <span>{{ bar.conductor }} шина</span><span>{{ bar.usedWays }}/{{ bar.ways }}</span>
+            </div>
+          }
+          <button (click)="recomputeWiring()">Преизчисли връзки по разположение</button>
+          <button (click)="clearWiring()">Изчисти окабеляването</button>
+        </div>
+      }
+
+      <div class="inspector-block bom-block">
+        <div class="bom-head">
+          <h4>Количествена сметка</h4>
+          <button (click)="refreshBom()">Обнови</button>
+        </div>
+        @if (bom(); as b) {
+          <div class="bom-list">
+            @for (item of b.items; track item.catalog_number) {
+              <div class="bom-item">
+                <span class="bi-name">{{ item.name }}</span>
+                <span class="bi-qty">{{ item.quantity }}×</span>
+                <span class="bi-price">{{ item.line_total.toFixed(2) }}</span>
+              </div>
+            }
+          </div>
+          <div class="bom-total">
+            <span>Общо ({{ b.totals.component_count }} апарата)</span>
+            <strong>{{ b.totals.subtotal.toFixed(2) }} {{ b.totals.currency }}</strong>
+          </div>
+        } @else {
+          <p class="panel-hint">Добави апарати, за да видиш сметката.</p>
+        }
+      </div>
+    </aside>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Мобилна навигация">
+    <button type="button" [class.active]="mobilePane() === 'library'" (click)="openLibrary()">
+      Библиотека
+    </button>
+    <button type="button" [class.active]="mobilePane() === 'canvas'" (click)="showCanvas()">
+      Табло
+    </button>
+    <button type="button" [class.active]="mobilePane() === 'inspect'" (click)="openInspect()">
+      Сметка
+    </button>
+  </nav>
+</div>

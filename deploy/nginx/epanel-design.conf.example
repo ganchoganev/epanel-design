@@ -1,0 +1,35 @@
+# Host Nginx → ETI Panel Designer Docker (127.0.0.1:8090).
+# Magento, tarataika.help и други vhost-и в /etc/nginx НЕ се пипат.
+#
+# Copy:
+#   sudo cp deploy/nginx/epanel-design.conf.example /etc/nginx/sites-available/epanel-design.conf
+#   sudo ln -sf /etc/nginx/sites-available/epanel-design.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d epanel-design.com -d www.epanel-design.com
+#
+# Преди proxy: docker compose трябва да върви на 127.0.0.1:8090
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name epanel-design.com www.epanel-design.com;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+        allow all;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+        client_max_body_size 50m;
+    }
+}

@@ -1,0 +1,91 @@
+<div class="wizard">
+  <h3>Импорт на цени от Excel</h3>
+  <p class="hint">
+    Качете ценова листа от дистрибутора. След прочитане посочете коя колона какви данни съдържа.
+  </p>
+
+  <div class="step">
+    <label class="file-btn">
+      <input type="file" accept=".xlsx,.xls,.csv" (change)="onFile($event)" hidden />
+      {{ file() ? file()!.name : 'Избери файл...' }}
+    </label>
+    <label class="header-row">
+      Ред със заглавия:
+      <input type="number" min="1" [ngModel]="headerRow()" (ngModelChange)="headerRow.set($event)" />
+    </label>
+    <button [disabled]="!file() || loading()" (click)="loadPreview()">Прочети</button>
+  </div>
+
+  @if (error()) {
+    <div class="error">{{ error() }}</div>
+  }
+
+  @if (preview(); as p) {
+    <div class="mapping">
+      <h4>Мапване на колони</h4>
+      <div class="map-row">
+        <span>Каталожен номер *</span>
+        <select (change)="setMapping('catalog_number', $any($event.target).value)">
+          <option value="">—</option>
+          @for (idx of columnIndexes(); track idx) {
+            <option [value]="idx" [selected]="mapping().catalog_number === idx">
+              {{ p.headers[idx] || 'Колона ' + (idx + 1) }}
+            </option>
+          }
+        </select>
+      </div>
+      <div class="map-row">
+        <span>Цена *</span>
+        <select (change)="setMapping('price', $any($event.target).value)">
+          <option value="">—</option>
+          @for (idx of columnIndexes(); track idx) {
+            <option [value]="idx" [selected]="mapping().price === idx">
+              {{ p.headers[idx] || 'Колона ' + (idx + 1) }}
+            </option>
+          }
+        </select>
+      </div>
+      <div class="map-row">
+        <span>Валута</span>
+        <select (change)="setMapping('currency', $any($event.target).value)">
+          <option value="">—</option>
+          @for (idx of columnIndexes(); track idx) {
+            <option [value]="idx" [selected]="mapping().currency === idx">
+              {{ p.headers[idx] || 'Колона ' + (idx + 1) }}
+            </option>
+          }
+        </select>
+      </div>
+    </div>
+
+    <div class="preview-table">
+      <h4>Преглед</h4>
+      <table>
+        <thead>
+          <tr>
+            @for (h of p.headers; track $index) {
+              <th>{{ h || 'Колона ' + ($index + 1) }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of p.preview_rows; track $index) {
+            <tr>
+              @for (cell of row; track $index) {
+                <td>{{ cell }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <button class="import-btn" [disabled]="!canImport() || loading()" (click)="runImport()">
+      Импортирай цените
+    </button>
+  }
+
+  @if (result()) {
+    <div class="result">{{ result() }}</div>
+  }
+</div>

@@ -1,0 +1,279 @@
+.conf {
+  padding: 16px;
+  max-width: 900px;
+  font-size: 13px;
+}
+
+.conf__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+
+  h3 {
+    margin: 0 0 4px;
+  }
+
+  p {
+    margin: 0;
+    color: #607d8b;
+    font-size: 13px;
+  }
+}
+
+.conf__stats {
+  display: flex;
+  gap: 14px;
+  white-space: nowrap;
+
+  span {
+    color: #607d8b;
+    font-size: 12px;
+  }
+
+  strong {
+    color: #263238;
+    font-size: 15px;
+  }
+}
+
+.conf__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: #546e7a;
+  }
+
+  select,
+  input[type='number'] {
+    padding: 5px 6px;
+    border: 1px solid #cfd8dc;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  input[type='number'] {
+    width: 82px;
+  }
+}
+
+.conf__check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px !important;
+  align-self: flex-end;
+  padding-bottom: 6px;
+  color: #263238 !important;
+  font-size: 13px !important;
+}
+
+.conf__loads {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
+  table {
+    width: 100%;
+    min-width: 520px;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  th,
+  td {
+    border: 1px solid #e0e0e0;
+    padding: 4px 6px;
+    text-align: left;
+  }
+
+  th {
+    background: #eceff1;
+    font-weight: 600;
+    color: #455a64;
+  }
+
+  input[type='text'],
+  input[type='number'],
+  select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 3px 4px;
+    font-size: 12px;
+    border-radius: 3px;
+
+    &:focus {
+      border-color: #90caf9;
+      background: #fff;
+      outline: none;
+    }
+  }
+
+  td:nth-child(3),
+  td:nth-child(4),
+  td:nth-child(5) {
+    width: 74px;
+  }
+
+  td:nth-child(2) {
+    width: 140px;
+  }
+}
+
+.conf__centre {
+  text-align: center;
+}
+
+.conf__remove {
+  background: none;
+  border: none;
+  color: #c62828;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+
+  &:hover {
+    color: #8e0000;
+  }
+}
+
+.conf__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.conf__btn {
+  background: #fff;
+  border: 1px solid #b0bec5;
+  color: #37474f;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+
+  &:hover {
+    background: #eceff1;
+  }
+}
+
+.conf__btn--primary {
+  background: #005cbb;
+  border-color: #005cbb;
+  color: #fff;
+
+  &:hover {
+    background: #004a99;
+  }
+}
+
+.conf__result {
+  margin-top: 22px;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
+  h4 {
+    margin: 0 0 10px;
+  }
+}
+
+.conf__enclosure {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #37474f;
+}
+
+.conf__phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.conf__phase {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  color: #fff;
+}
+
+.conf__phase--l1 {
+  background: #8b5a2b;
+}
+
+.conf__phase--l2 {
+  background: #1f1f1f;
+}
+
+.conf__phase--l3 {
+  background: #6b7280;
+}
+
+.conf__phase--main {
+  background: #005cbb;
+}
+
+.conf__devices {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 14px;
+
+  th,
+  td {
+    border: 1px solid #e0e0e0;
+    padding: 4px 8px;
+    text-align: left;
+  }
+
+  th {
+    background: #eceff1;
+    color: #455a64;
+  }
+}
+
+.conf__label {
+  font-weight: 600;
+  color: #263238;
+  width: 52px;
+}
+
+.conf__code {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: #01579b;
+  width: 108px;
+}
+
+.conf__notes,
+.conf__errors {
+  margin: 0 0 14px;
+  padding: 10px 16px 10px 30px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.conf__notes {
+  background: #f1f8e9;
+  color: #33691e;
+}
+
+.conf__errors {
+  background: #ffebee;
+  color: #c62828;
+}

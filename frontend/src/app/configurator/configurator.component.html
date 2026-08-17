@@ -1,0 +1,223 @@
+<div class="conf">
+  <header class="conf__head">
+    <div>
+      <h3>Конфигуратор на табло</h3>
+      <p>Опишете товарите — конфигураторът избира реални ETI апарати и табло.</p>
+    </div>
+    <div class="conf__stats">
+      <span><strong>{{ totalPowerKw() }}</strong> kW</span>
+      <span><strong>{{ circuitCount() }}</strong> кръга</span>
+    </div>
+  </header>
+
+  <section class="conf__options">
+    <label>
+      Захранване
+      <select
+        [value]="options().supplyPhases"
+        (change)="updateOption('supplyPhases', $any($event.target).value === '3' ? 3 : 1)"
+      >
+        <option value="1">Монофазно 230 V</option>
+        <option value="3">Трифазно 400 V</option>
+      </select>
+    </label>
+
+    <label>
+      Коеф. едновременност
+      <input
+        type="number"
+        step="0.05"
+        min="0.3"
+        max="1"
+        [value]="options().diversityFactor"
+        (input)="updateOption('diversityFactor', numberOf($any($event.target).value))"
+      />
+    </label>
+
+    <label>
+      Резервни модули
+      <input
+        type="number"
+        min="0"
+        max="24"
+        [value]="options().spareModules"
+        (input)="updateOption('spareModules', numberOf($any($event.target).value))"
+      />
+    </label>
+
+    <label class="conf__check">
+      <input
+        type="checkbox"
+        [checked]="options().includeMainSwitch"
+        (change)="updateOption('includeMainSwitch', $any($event.target).checked)"
+      />
+      Главен прекъсвач
+    </label>
+
+    <label class="conf__check">
+      <input
+        type="checkbox"
+        [checked]="options().includeSpd"
+        (change)="updateOption('includeSpd', $any($event.target).checked)"
+      />
+      Катоден отводител
+    </label>
+
+    <label class="conf__check">
+      <input
+        type="checkbox"
+        [checked]="options().perCircuitRcbo"
+        (change)="updateOption('perCircuitRcbo', $any($event.target).checked)"
+      />
+      RCBO на всеки кръг (KZS-1M)
+    </label>
+  </section>
+
+  <section class="conf__loads">
+    <table>
+      <thead>
+        <tr>
+          <th>Наименование</th>
+          <th>Тип</th>
+          <th>kW</th>
+          <th>Бр.</th>
+          <th>Дълж. m</th>
+          <th>3F</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (load of loads(); track load.id) {
+          <tr>
+            <td>
+              <input
+                type="text"
+                [value]="load.name"
+                (input)="updateLoad(load.id, { name: $any($event.target).value })"
+              />
+            </td>
+            <td>
+              <select
+                [value]="load.kind"
+                (change)="onKindChange(load.id, $any($event.target).value)"
+              >
+                @for (kind of kinds; track kind.value) {
+                  <option [value]="kind.value">{{ kind.label }}</option>
+                }
+              </select>
+            </td>
+            <td>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                [value]="load.powerKw"
+                (input)="updateLoad(load.id, { powerKw: numberOf($any($event.target).value) })"
+              />
+            </td>
+            <td>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                [value]="load.quantity"
+                (input)="updateLoad(load.id, { quantity: numberOf($any($event.target).value) })"
+              />
+            </td>
+            <td>
+              <input
+                type="number"
+                min="1"
+                max="200"
+                [value]="load.lengthM"
+                (input)="updateLoad(load.id, { lengthM: numberOf($any($event.target).value) })"
+              />
+            </td>
+            <td class="conf__centre">
+              <input
+                type="checkbox"
+                [checked]="load.threePhase"
+                [disabled]="options().supplyPhases === 1"
+                (change)="updateLoad(load.id, { threePhase: $any($event.target).checked })"
+              />
+            </td>
+            <td>
+              <button type="button" class="conf__remove" (click)="removeLoad(load.id)">×</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+
+    <div class="conf__actions">
+      <button type="button" class="conf__btn" (click)="addLoad()">+ Добави товар</button>
+      <button type="button" class="conf__btn conf__btn--primary" (click)="calculate()">
+        Генерирай таблото
+      </button>
+    </div>
+  </section>
+
+  @if (result(); as res) {
+    <section class="conf__result">
+      <h4>Резултат</h4>
+
+      @if (res.enclosure) {
+        <p class="conf__enclosure">
+          <strong>{{ res.enclosure.name }}</strong>
+          — {{ res.enclosure.modulesPerRow }} мод. × {{ res.enclosure.rows }} реда,
+          нужни {{ res.totalModules }} модула
+        </p>
+      }
+
+      <div class="conf__phases">
+        <span class="conf__phase conf__phase--l1">L1 {{ res.phaseLoadA.L1.toFixed(0) }} A</span>
+        <span class="conf__phase conf__phase--l2">L2 {{ res.phaseLoadA.L2.toFixed(0) }} A</span>
+        <span class="conf__phase conf__phase--l3">L3 {{ res.phaseLoadA.L3.toFixed(0) }} A</span>
+        <span class="conf__phase conf__phase--main">
+          Главен {{ res.mainBreakerCurrentA }} A
+        </span>
+      </div>
+
+      <table class="conf__devices">
+        <thead>
+          <tr>
+            <th>Поз.</th>
+            <th>Каталожен №</th>
+            <th>Предназначение</th>
+            <th>Мод.</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (device of res.devices; track device.label + device.offsetModule) {
+            <tr>
+              <td class="conf__label">{{ device.label }}</td>
+              <td class="conf__code">{{ device.catalogNumber }}</td>
+              <td>{{ device.purpose }}</td>
+              <td class="conf__centre">{{ device.widthModules }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      @if (res.notes.length) {
+        <ul class="conf__notes">
+          @for (note of res.notes; track note) {
+            <li>{{ note }}</li>
+          }
+        </ul>
+      }
+
+      @if (res.unresolved.length) {
+        <ul class="conf__errors">
+          @for (issue of res.unresolved; track issue) {
+            <li>{{ issue }}</li>
+          }
+        </ul>
+      }
+
+      <button type="button" class="conf__btn conf__btn--primary" (click)="apply()">
+        Отвори отново в редактора
+      </button>
+    </section>
+  }
+</div>

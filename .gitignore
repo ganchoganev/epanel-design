@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+frontend/dist/
+frontend/.angular/
+
+# Environment
+backend/.env
+*.log
+
+# Local DB
+backend/database/*.sqlite
+
+# OS
+.DS_Store
