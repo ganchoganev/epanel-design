@@ -7,7 +7,7 @@
 ## Стек
 
 - **Frontend:** Angular 19 (standalone, signals) + Konva.js за 2D редактора; PWA (service worker + web manifest).
-- **Backend:** Laravel 13 (PHP 8.3+), REST API под `/api/v1`.
+- **Backend:** Laravel 13 (PHP 8.4+), REST API под `/api/v1`.
 - **База данни:** MySQL (production) / SQLite (dev по подразбиране).
 - **Export:** dompdf (PDF), PhpSpreadsheet / maatwebsite-excel (Excel).
 
