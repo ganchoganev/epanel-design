@@ -10,7 +10,8 @@ import { DesignStore } from './services/design-store.service';
 import { ComponentGroup, EtiProduct } from './models/catalog.models';
 import { Bom, EnclosureConfig, PlacedComponent, ProjectSummary, EditorLayerId, EditorLayers, DEFAULT_EDITOR_LAYERS, EDITOR_LAYER_META, CABLE_KINDS, CABLE_SECTIONS_MM2, Circuit, parseCableKind, Wire } from './models/project.models';
 import { ConfiguratorResult } from './services/configurator.service';
-import { environment } from '../environments/environment';
+import { LoginComponent } from './login/login.component';
+import { AuthService } from './services/auth.service';
 
 type Panel = 'catalog' | 'groups' | 'configurator' | 'circuits' | 'projects' | 'prices';
 type Workspace = 'layout' | 'schematic';
@@ -38,6 +39,7 @@ const ENCLOSURE_PRESETS: EnclosureConfig[] = [
     PriceImportComponent,
     ConfiguratorComponent,
     SingleLineDiagramComponent,
+    LoginComponent,
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -45,7 +47,9 @@ const ENCLOSURE_PRESETS: EnclosureConfig[] = [
 export class AppComponent {
   private api = inject(ApiService);
   private destroyRef = inject(DestroyRef);
+  readonly auth = inject(AuthService);
   store = inject(DesignStore);
+  readonly authReady = signal(false);
 
   readonly enclosurePresets = ENCLOSURE_PRESETS;
   activePanel = signal<Panel>('catalog');
@@ -109,11 +113,30 @@ export class AppComponent {
   statusMessage = signal<string>('');
 
   constructor() {
+    this.bindViewport();
+    this.store.reset();
+    this.auth.hydrate().subscribe((ok) => {
+      this.authReady.set(true);
+      if (ok) this.bootstrapData();
+    });
+  }
+
+  onLoggedIn(): void {
+    this.bootstrapData();
+  }
+
+  logout(): void {
+    this.auth.logout();
+    this.store.reset();
+    this.selected.set(null);
+    this.bom.set(null);
+    this.currentProjectId.set(null);
+  }
+
+  private bootstrapData(): void {
     this.loadCatalog();
     this.loadGroups();
     this.loadProjects();
-    this.store.reset();
-    this.bindViewport();
   }
 
   private bindViewport(): void {
@@ -645,7 +668,18 @@ export class AppComponent {
       this.flash('Първо запазете проекта, за да експортирате.');
       return;
     }
-    window.open(this.api.exportUrl(id, type), '_blank');
+    this.api.downloadExport(id, type).subscribe({
+      next: (blob) => {
+        const ext = type === 'excel' ? 'xlsx' : type;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `project-${id}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      error: () => this.flash('Експортът не успя. Проверете дали сте влезли.'),
+    });
   }
 
   onEplanFile(event: Event): void {

@@ -1,3 +1,8 @@
+@if (!authReady()) {
+  <div class="login-wait"></div>
+} @else if (!auth.isLoggedIn()) {
+  <app-login (loggedIn)="onLoggedIn()" />
+} @else {
 <div
   class="app-shell"
   [class.is-narrow]="isNarrow()"
@@ -41,6 +46,8 @@
       <button (click)="export('pdf'); closeOverlays()">PDF</button>
       <button (click)="export('excel'); closeOverlays()">Excel</button>
       <button (click)="export('csv'); closeOverlays()">CSV</button>
+      <span class="sep"></span>
+      <button (click)="logout(); closeOverlays()" title="Изход">Изход</button>
     </div>
     @if (isNarrow()) {
       <button type="button" class="icon-btn" (click)="toggleOverflow()" title="Действия" aria-label="Действия">⋯</button>
@@ -527,3 +534,4 @@
     </button>
   </nav>
 </div>
+}

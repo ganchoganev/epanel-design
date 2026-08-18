@@ -98,6 +98,10 @@ export class ApiService {
     form.append('file', file);
     return this.http.post(`${this.base}/catalog/import/eplan`, form);
   }
+
+  downloadExport(id: number, type: 'pdf' | 'csv' | 'excel'): Observable<Blob> {
+    return this.http.get(`${this.base}/projects/${id}/export/${type}`, { responseType: 'blob' });
+  }
 }
 
 export interface PricePreview {
