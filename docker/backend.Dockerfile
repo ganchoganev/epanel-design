@@ -12,8 +12,12 @@ RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 
 COPY backend/ ./
 RUN composer dump-autoload --optimize \
-    && chown -R www-data:www-data storage bootstrap/cache
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && printf '\nclear_env = no\n' >> /usr/local/etc/php-fpm.d/zz-docker.conf
+
+COPY docker/backend-entrypoint.sh /usr/local/bin/backend-entrypoint.sh
+RUN chmod +x /usr/local/bin/backend-entrypoint.sh
 
 EXPOSE 9000
 
-CMD ["sh", "-c", "php artisan migrate --force && php artisan db:seed --force && php-fpm"]
+CMD ["/usr/local/bin/backend-entrypoint.sh"]
