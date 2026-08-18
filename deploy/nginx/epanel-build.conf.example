@@ -2,17 +2,17 @@
 # Magento, tarataika.help и други vhost-и в /etc/nginx НЕ се пипат.
 #
 # Copy:
-#   sudo cp deploy/nginx/epanel-design.conf.example /etc/nginx/sites-available/epanel-design.conf
-#   sudo ln -sf /etc/nginx/sites-available/epanel-design.conf /etc/nginx/sites-enabled/
+#   sudo cp deploy/nginx/epanel-build.conf.example /etc/nginx/sites-available/epanel-build.conf
+#   sudo ln -sf /etc/nginx/sites-available/epanel-build.conf /etc/nginx/sites-enabled/
 #   sudo nginx -t && sudo systemctl reload nginx
-#   sudo certbot --nginx -d epanel-design.com -d www.epanel-design.com
+#   sudo certbot --nginx -d epanel-build.com -d www.epanel-build.com
 #
 # Преди proxy: docker compose трябва да върви на 127.0.0.1:8090
 
 server {
     listen 80;
     listen [::]:80;
-    server_name epanel-design.com www.epanel-design.com;
+    server_name epanel-build.com www.epanel-build.com;
 
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
