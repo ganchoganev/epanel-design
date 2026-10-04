@@ -33,6 +33,7 @@ class EtiCatalogSeeder extends Seeder
         $this->seedBusbars();
         $this->seedEnclosures();
         $this->seedTerminals();
+        $this->seedOfferApparatus();
         $this->seedGroups();
     }
 
@@ -397,6 +398,73 @@ class EtiCatalogSeeder extends Seeder
                 'verified' => false,
             ]);
         }
+    }
+
+    /**
+     * Apparatus used when a designer schedule (МАП / ПЛК) is turned into an
+     * offer. Order codes and prices come from a working ETI offer, not from
+     * the approximate ETIMAT 6 seed above.
+     */
+    private function seedOfferApparatus(): void
+    {
+        $breakers = [
+            [16, 1, 'C', '001900030', 3.57],
+            [40, 1, 'C', '001900034', 4.70],
+            [50, 1, 'C', '001900035', 7.20],
+            [63, 1, 'C', '001900036', 7.53],
+            [40, 3, 'C', '001900334', 15.77],
+            [63, 3, 'C', '001900336', 26.68],
+        ];
+
+        foreach ($breakers as [$current, $poles, $curve, $code, $price]) {
+            $this->product($code, "Миниатюрен автоматичен прекъсвач ETIMAT P6 {$poles}p {$curve}{$current}", [
+                'series' => 'ETIMAT P6',
+                'category' => 'MCB',
+                'poles' => $poles,
+                'rated_current_a' => $current,
+                'rated_voltage_v' => $poles === 1 ? 230 : 400,
+                'trip_curve' => $curve,
+                'breaking_capacity_ka' => 6,
+                'width_modules' => $poles,
+                'depth_mm' => 68,
+                'heat_dissipation_w' => $this->mcbHeat($current) * $poles,
+                'price' => $price,
+                'data_source' => 'reference_offer',
+            ]);
+        }
+
+        $this->product('004671073', 'Автоматичен прекъсвач лят корпус EB2 250/3L 250A 3p', [
+            'series' => 'EB2',
+            'category' => 'MCCB',
+            'poles' => 3,
+            'rated_current_a' => 250,
+            'rated_voltage_v' => 400,
+            'width_modules' => 6,
+            'price' => 246.46,
+            'data_source' => 'reference_offer',
+        ]);
+
+        $this->product('002423114', 'Товаров прекъсвач SV 163 1p 63A', [
+            'series' => 'SV',
+            'category' => 'ISOLATOR',
+            'poles' => 1,
+            'rated_current_a' => 63,
+            'rated_voltage_v' => 230,
+            'width_modules' => 1,
+            'price' => 7.44,
+            'data_source' => 'reference_offer',
+        ]);
+
+        $this->product('002423314', 'Товаров прекъсвач SV 363 3p 63A', [
+            'series' => 'SV',
+            'category' => 'ISOLATOR',
+            'poles' => 3,
+            'rated_current_a' => 63,
+            'rated_voltage_v' => 400,
+            'width_modules' => 3,
+            'price' => 21.67,
+            'data_source' => 'reference_offer',
+        ]);
     }
 
     private function seedGroups(): void

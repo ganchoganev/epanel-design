@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         apiPrefix: 'api',
     )
+    ->withCommands()
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,

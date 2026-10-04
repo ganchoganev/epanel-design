@@ -2,10 +2,15 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogImportController;
+use App\Http\Controllers\Api\CodeReplacementController;
 use App\Http\Controllers\Api\ComponentGroupController;
 use App\Http\Controllers\Api\PriceImportController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\EticadEnclosureController;
+use App\Http\Controllers\Api\EticadFaceController;
+use App\Http\Controllers\Api\EticadPhotoController;
+use App\Http\Controllers\Api\ScheduleOfferController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
@@ -44,5 +49,15 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/projects/{project}/export/pdf', [ProjectController::class, 'exportPdf']);
         Route::get('/projects/{project}/export/csv', [ProjectController::class, 'exportCsv']);
         Route::get('/projects/{project}/export/excel', [ProjectController::class, 'exportExcel']);
+
+        Route::post('/offers/from-schedule', [ScheduleOfferController::class, 'preview']);
+        Route::post('/offers/from-schedule/xlsx', [ScheduleOfferController::class, 'download']);
+        Route::post('/offers/draft/xlsx', [ScheduleOfferController::class, 'downloadDraft']);
+
+        Route::get('/codes/replacements', [CodeReplacementController::class, 'index']);
+        Route::post('/codes/replacements', [CodeReplacementController::class, 'import']);
+        Route::get('/eticad/photos/{code}', [EticadPhotoController::class, 'show']);
+        Route::get('/eticad/faces/{code}', [EticadFaceController::class, 'show']);
+        Route::get('/eticad/enclosures', [EticadEnclosureController::class, 'index']);
     });
 });

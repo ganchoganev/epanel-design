@@ -11,7 +11,10 @@ COPY backend/composer.json backend/composer.lock ./
 RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 
 COPY backend/ ./
-RUN composer dump-autoload --optimize \
+RUN mkdir -p /var/www/eticad-seed \
+    && cp -a storage/app/eticad/. /var/www/eticad-seed/ \
+    && rm -rf storage/app/eticad \
+    && composer dump-autoload --optimize \
     && chown -R www-data:www-data storage bootstrap/cache \
     && printf '\nclear_env = no\n' >> /usr/local/etc/php-fpm.d/zz-docker.conf
 

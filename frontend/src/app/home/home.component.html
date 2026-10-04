@@ -1,0 +1,60 @@
+<div class="home">
+  <header class="top">
+    <div class="brand">
+      <span class="logo">ETI</span>
+      <div>
+        <div class="title">Panel Designer</div>
+        <div class="sub">Първо файловете, после проектът</div>
+      </div>
+    </div>
+    <button type="button" class="ghost" (click)="logout()">Изход</button>
+  </header>
+
+  <section class="panel">
+    <p class="kicker">1. Качи веднъж</p>
+    <h1>Файлове за всички проекти</h1>
+    <p class="lead">
+      Тези два файла се качват тук и после се ползват сами. Не се качват отново за всеки PDF.
+    </p>
+    <a class="card" routerLink="/data/prices">
+      <span class="step">Цени</span>
+      <strong>Excel с код и цена</strong>
+      <span>Актуалната цена за всеки код. Офертата я взима оттук.</span>
+    </a>
+    <a class="card" routerLink="/data/codes">
+      <span class="step">Заменени кодове</span>
+      <strong>Excel: стар код, нов код</strong>
+      <span>Стар код и новият, с който се заменя. Офертата ползва новия. Лицето идва от ETICAD, ако го има.</span>
+    </a>
+  </section>
+
+  <section class="panel">
+    <p class="kicker">2. Направи проекта</p>
+    <h1>От PDF до табло</h1>
+    <p class="lead">Стъпките са отгоре на всеки екран. Печатът е до тях и събира офертата, 2D чертежа и снимките.</p>
+    <a class="card" routerLink="/drawing/offer">
+      <span class="step">Стъпка 1</span>
+      <strong>Прочети PDF и направи оферта</strong>
+      <span>Качваш схемата, виждаш кодовете и сваляш Excel. Следващата стъпка е отгоре.</span>
+    </a>
+    <a class="card" routerLink="/drawing/views">
+      <span class="step">Стъпка 2</span>
+      <strong>2D изглед на цялото табло</strong>
+      <span>Чертежът на таблото от ETICAD. Предложение по ширината на апаратите, което се сменя от списък.</span>
+    </a>
+    <a class="card" routerLink="/layout">
+      <span class="step">Стъпка 3</span>
+      <strong>Таблото със снимки</strong>
+      <span>Същите апарати, но с реалните снимки от каталога, наредени в избрания корпус.</span>
+    </a>
+  </section>
+
+  <section class="panel quiet">
+    <p class="kicker">По-късно</p>
+    <a class="card muted" routerLink="/apartment/template">
+      <span class="step">Друг вход</span>
+      <strong>Апартамент по шаблон</strong>
+      <span>Още не е готов. Проектите от PDF минават по стъпките по-горе.</span>
+    </a>
+  </section>
+</div>

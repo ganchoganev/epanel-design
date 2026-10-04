@@ -17,6 +17,13 @@ services:
       DB_DATABASE: ${DB_DATABASE:-eti_panel}
       DB_USERNAME: ${DB_USERNAME:-eti}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+      ETICAD_DB_CONNECTION: mysql
+      ETICAD_DB_HOST: mysql
+      ETICAD_DB_PORT: 3306
+      ETICAD_DB_DATABASE: eticad
+      ETICAD_DB_USERNAME: ${DB_USERNAME:-eti}
+      ETICAD_DB_PASSWORD: ${DB_PASSWORD:-secret}
     volumes:
       - backend_storage:/var/www/backend/storage
     depends_on:

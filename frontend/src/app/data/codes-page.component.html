@@ -1,0 +1,46 @@
+<div class="page">
+  <a class="back" routerLink="/">← Меню</a>
+  <p class="kicker">Качва се веднъж</p>
+  <h1>Заменени кодове</h1>
+  <p class="lead">
+    Excel или CSV с две колони: стар код и нов код. Първият ред може да е заглавие.
+    Файлът заменя целия списък. Следващите оферти и изгледи ползват новия код.
+    Чертежът се взима от ETICAD. Ако новият код го няма там, лицето остава празно.
+  </p>
+
+  <label class="upload">
+    Файл със замени
+    <input type="file" accept=".xlsx,.xls,.csv" (change)="onFile($event)" />
+  </label>
+  <div class="actions">
+    <button type="button" class="primary" (click)="upload()" [disabled]="busy()">Запази замените</button>
+  </div>
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+  @if (message()) {
+    <p class="note">{{ message() }}</p>
+  }
+
+  <h2>Записани сега: {{ count() }}</h2>
+  @if (rows().length === 0) {
+    <p class="lead">Още няма качени замени.</p>
+  } @else {
+    <table>
+      <thead>
+        <tr>
+          <th>Стар код</th>
+          <th>Нов код</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.from_code) {
+          <tr>
+            <td>{{ row.from_code }}</td>
+            <td>{{ row.to_code }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>

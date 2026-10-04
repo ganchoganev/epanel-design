@@ -1,0 +1,74 @@
+<div class="page">
+  <app-step-trail [step]="3" />
+  <h1>3D изглед</h1>
+
+  @if (!offer()) {
+    <p class="lead">
+      Още няма прочетена схема. Минава се през офертата и 2D изгледа, където се избира таблото.
+    </p>
+    <a class="primary" routerLink="/drawing/offer">Към офертата</a>
+  } @else {
+    <p class="lead">
+      Снимките са реалните от каталога на ETICAD — таблото и апаратите в него. Подредбата е същата като в 2D. Следващата стъпка е самото табло.
+    </p>
+    @for (board of offer()!.boards; track board.name) {
+      <section class="board">
+        <div class="head">
+          <h2>{{ board.name }}</h2>
+          <label>
+            Табло
+            @if (enclosures().length) {
+            <select
+              [value]="picked()[board.name] || ''"
+              (change)="choose(board.name, $any($event.target).value)"
+            >
+              <optgroup label="Вграден монтаж">
+                @for (item of flush(); track item.catalog_number) {
+                  <option [value]="item.catalog_number" [selected]="picked()[board.name] === item.catalog_number">{{ item.name }}</option>
+                }
+              </optgroup>
+              <optgroup label="Открит монтаж">
+                @for (item of surface(); track item.catalog_number) {
+                  <option [value]="item.catalog_number" [selected]="picked()[board.name] === item.catalog_number">{{ item.name }}</option>
+                }
+              </optgroup>
+            </select>
+            }
+          </label>
+        </div>
+        <div class="scene">
+          <figure>
+            @if (photos()[picked()[board.name]]; as src) {
+              <img [src]="src" [alt]="option(picked()[board.name])?.name || 'Табло'" />
+            } @else if (photos()[picked()[board.name]] === null) {
+              <p class="missing-note">Няма снимка на таблото.</p>
+            }
+            <figcaption>{{ option(picked()[board.name])?.name }}</figcaption>
+          </figure>
+          <div class="photo-board">
+            @for (row of rows(board); track $index) {
+              <div class="rail">
+                @for (device of row; track $index) {
+                  @if (photos()[device.code]; as src) {
+                    <img
+                      [src]="src"
+                      [alt]="device.code"
+                      [title]="device.code + ' ' + device.name"
+                      [style.width.px]="device.modules * 36"
+                    />
+                  } @else if (photos()[device.code] === null) {
+                    <div class="gap" [style.width.px]="device.modules * 36">няма снимка</div>
+                  }
+                }
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+    }
+    <div class="actions">
+      <a routerLink="/drawing/views">Обратно към 2D</a>
+      <a class="primary" routerLink="/layout">Към таблото</a>
+    </div>
+  }
+</div>

@@ -1,0 +1,117 @@
+<div class="page">
+  <app-step-trail [step]="1" />
+  <h1>Оферта от PDF</h1>
+  <p class="lead">
+    Качете схемата на проектанта. Кодовете се въвеждат по тип — един код за всички бройки от този тип. Типовете без код са отбелязани и се попълват преди офертата.
+  </p>
+
+  <label class="upload">
+    PDF файл
+    <input type="file" accept="application/pdf,.pdf" (change)="onFile($event)" />
+  </label>
+  <div class="actions">
+    <button type="button" class="primary" (click)="preview()" [disabled]="busy()">Прочети</button>
+    <button type="button" (click)="download()" [disabled]="busy() || !offer()">Свали Excel</button>
+  </div>
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  @if (offer(); as result) {
+    <div class="viewer">
+      <div class="zoombar">
+        <button type="button" (click)="zoomBy(1 / 1.25)" [disabled]="drawing()">−</button>
+        <span>{{ zoomPercent() }}%</span>
+        <button type="button" (click)="zoomBy(1.25)" [disabled]="drawing()">+</button>
+        <button type="button" (click)="fitSheet()" [disabled]="drawing()">Цял чертеж</button>
+        <span class="zoom-hint">Колелцето увеличава, влаченето мести. Ред от таблицата отваря мястото.</span>
+      </div>
+      <div
+        class="sheet"
+        #viewport
+        (pointerdown)="pointerDown($event)"
+        (pointermove)="pointerMove($event)"
+        (pointerup)="pointerUp()"
+        (pointercancel)="pointerUp()"
+      >
+        <div
+          class="paper"
+          [style.width.px]="sheetWidth()"
+          [style.height.px]="sheetHeight()"
+          [style.transform]="'translate(' + panX() + 'px,' + panY() + 'px) scale(' + viewScale() + ')'"
+        >
+        <canvas #sheet></canvas>
+        @for (mark of selectedMarks(); track mark.id) {
+          <span
+            class="dot"
+            [class.bad]="!mark.catalog_number"
+            [style.left.%]="mark.x * 100"
+            [style.top.%]="mark.y * 100"
+            [style.width.px]="14 / viewScale()"
+            [style.height.px]="14 / viewScale()"
+            [style.margin-left.px]="-7 / viewScale()"
+            [style.margin-top.px]="-7 / viewScale()"
+          ></span>
+        }
+        </div>
+      </div>
+    </div>
+    <h2>Кодове по тип</h2>
+    <p class="lead">Избери ред и чертежът се премества върху този тип. Записът сменя кода на всички бройки от типа.</p>
+    <table class="types">
+      <thead>
+        <tr>
+          <th>Табло</th>
+          <th>Тип</th>
+          <th>Брой</th>
+          <th>Код на ETI</th>
+          <th>Наименование</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (group of groups(); track group.key) {
+          <tr [class.missing]="!group.catalog_number" [class.on]="selectedKey() === group.key" (click)="selectGroup(group.key)">
+            <td>{{ group.board }}</td>
+            <td>{{ group.device_type }} {{ group.rating }}</td>
+            <td>{{ group.quantity }}</td>
+            <td (click)="$event.stopPropagation()">
+              <input [value]="group.catalog_number ?? ''" [placeholder]="group.catalog_number ? '' : 'въведи код'" #codeField />
+              <button type="button" (click)="applyGroup(group, codeField.value)">Запиши</button>
+            </td>
+            <td>{{ group.catalog_number ? group.name : 'Без код — въведи преди офертата' }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    @if (codeHint()) {
+      <p class="hint">{{ codeHint() }}</p>
+    }
+    @if (drawing()) {
+      <p class="lead">Чертая схемата…</p>
+    }
+    <p class="note">{{ result.note }}</p>
+    @for (board of result.boards; track board.name) {
+      <h2>{{ board.name }}</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Код</th>
+            <th>Наименование</th>
+            <th>К-во</th>
+            <th>Ед. цена</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (line of board.lines; track line.catalog_number) {
+            <tr>
+              <td>{{ line.catalog_number }}</td>
+              <td>{{ line.name }}</td>
+              <td>{{ line.quantity }}</td>
+              <td>{{ line.unit_price ?? '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  }
+</div>

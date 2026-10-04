@@ -99,8 +99,52 @@ export class ApiService {
     return this.http.post(`${this.base}/catalog/import/eplan`, form);
   }
 
+  previewScheduleOffer(file: File): Observable<ScheduleOffer> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<ScheduleOffer>(`${this.base}/offers/from-schedule`, form);
+  }
+
+  downloadScheduleOffer(file: File): Observable<Blob> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post(`${this.base}/offers/from-schedule/xlsx`, form, { responseType: 'blob' });
+  }
+
+  downloadScheduleDraft(offer: ScheduleOffer): Observable<Blob> {
+    return this.http.post(`${this.base}/offers/draft/xlsx`, {
+      boards: offer.boards,
+      note: offer.note,
+    }, { responseType: 'blob' });
+  }
+
   downloadExport(id: number, type: 'pdf' | 'csv' | 'excel'): Observable<Blob> {
     return this.http.get(`${this.base}/projects/${id}/export/${type}`, { responseType: 'blob' });
+  }
+
+  codeReplacements(): Observable<{ count: number; rows: CodeReplacement[] }> {
+    return this.http.get<{ count: number; rows: CodeReplacement[] }>(`${this.base}/codes/replacements`);
+  }
+
+  importCodeReplacements(file: File): Observable<{ imported: number; skipped: number; count: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ imported: number; skipped: number; count: number }>(
+      `${this.base}/codes/replacements`,
+      form
+    );
+  }
+
+  productPhoto(code: string): Observable<Blob> {
+    return this.http.get(`${this.base}/eticad/photos/${code}`, { responseType: 'blob' });
+  }
+
+  productFace(code: string): Observable<ProductFace> {
+    return this.http.get<ProductFace>(`${this.base}/eticad/faces/${code}`);
+  }
+
+  enclosures(): Observable<{ enclosures: EnclosureOption[] }> {
+    return this.http.get<{ enclosures: EnclosureOption[] }>(`${this.base}/eticad/enclosures`);
   }
 }
 
@@ -116,8 +160,68 @@ export interface PriceMapping {
   currency: number | null;
 }
 
+export interface ProductFace {
+  svg: string;
+  width_mm: number;
+  height_mm: number;
+  rails?: { x: number; y: number; width: number }[];
+}
+
+export interface EnclosureOption {
+  catalog_number: string;
+  name: string;
+  rows: number;
+  modules_per_row: number;
+  mounting: string;
+}
+
+export interface ScheduleOfferLine {
+  catalog_number: string;
+  name: string;
+  quantity: number;
+  unit_price: number | null;
+}
+
+export interface SchedulePlacement {
+  id: number;
+  board: string;
+  x: number;
+  y: number;
+  device_type: string;
+  rating: string;
+  catalog_number: string | null;
+  name: string | null;
+  unit_price: number | null;
+}
+
+/** Result of reading a designer PDF into an ETI offer. */
+export interface ScheduleOffer {
+  boards: Array<{
+    name: string;
+    quantity: number;
+    lines: ScheduleOfferLine[];
+  }>;
+  unmatched: Array<{
+    board: string;
+    rating: string;
+    device_type: string;
+    quantity: number;
+    reason: string;
+  }>;
+  note: string;
+  placements: SchedulePlacement[];
+}
+
 export interface PriceImportResult {
   updated: number;
+  created: number;
   notFound: number;
   skipped: number;
 }
+
+export interface CodeReplacement {
+  from_code: string;
+  to_code: string;
+}
+
+

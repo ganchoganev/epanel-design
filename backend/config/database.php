@@ -44,6 +44,26 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
+        'eticad' => env('ETICAD_DB_CONNECTION', 'sqlite') === 'mysql' ? [
+            'driver' => 'mysql',
+            'host' => env('ETICAD_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('ETICAD_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('ETICAD_DB_DATABASE', 'eticad'),
+            'username' => env('ETICAD_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('ETICAD_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ] : [
+            'driver' => 'sqlite',
+            'database' => env('ETICAD_DATABASE', database_path('eticad.sqlite')),
+            'prefix' => '',
+            'foreign_key_constraints' => true,
+        ],
+
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),

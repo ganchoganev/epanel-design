@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\EtiProduct;
 use App\Models\PriceImportProfile;
+use App\Support\CatalogCode;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -48,6 +49,7 @@ class PriceImportService
         $rows = $sheet->toArray(null, true, true, true);
 
         $updated = 0;
+        $created = 0;
         $notFound = 0;
         $skipped = 0;
 
@@ -57,18 +59,11 @@ class PriceImportService
             }
 
             $values = array_values($row);
-            $catalogNumber = trim((string) ($values[$columnMapping['catalog_number']] ?? ''));
+            $catalogNumber = CatalogCode::normalize((string) ($values[$columnMapping['catalog_number']] ?? ''));
             $priceRaw = $values[$columnMapping['price']] ?? null;
 
             if ($catalogNumber === '' || $priceRaw === null || $priceRaw === '') {
                 $skipped++;
-
-                continue;
-            }
-
-            $product = EtiProduct::where('catalog_number', $catalogNumber)->first();
-            if (! $product) {
-                $notFound++;
 
                 continue;
             }
@@ -81,8 +76,25 @@ class PriceImportService
                 }
             }
 
+            $price = (float) str_replace(',', '.', (string) preg_replace('/[^\d.,-]/', '', (string) $priceRaw));
+            $product = EtiProduct::where('catalog_number', $catalogNumber)->first();
+            if (! $product) {
+                EtiProduct::create([
+                    'catalog_number' => $catalogNumber,
+                    'name' => $catalogNumber,
+                    'price' => $price,
+                    'currency' => $currency,
+                    'data_source' => 'price_import',
+                    'verified' => false,
+                    'width_modules' => 1,
+                ]);
+                $created++;
+
+                continue;
+            }
+
             $product->update([
-                'price' => (float) str_replace(',', '.', preg_replace('/[^\d.,-]/', '', (string) $priceRaw)),
+                'price' => $price,
                 'currency' => $currency,
                 'data_source' => 'price_import',
             ]);
@@ -90,7 +102,7 @@ class PriceImportService
             $updated++;
         }
 
-        return compact('updated', 'notFound', 'skipped');
+        return compact('updated', 'created', 'notFound', 'skipped');
     }
 
     public function storeProfile(string $name, array $columnMapping, int $headerRow = 1): PriceImportProfile

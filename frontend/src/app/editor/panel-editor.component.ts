@@ -181,6 +181,8 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
   readonly layers = input<EditorLayers>(DEFAULT_EDITOR_LAYERS);
   readonly connectMode = input(false);
   readonly selectedWireId = input<string | null>(null);
+  /** Catalog photo URLs keyed by catalog number. Devices draw the photo when it is loaded. */
+  readonly photos = input<Record<string, string>>({});
 
   private stage?: Konva.Stage;
   private layer?: Konva.Layer;
@@ -193,6 +195,7 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
   readonly connectFromUid = signal<string | null>(null);
 
   private previewPositions = new Map<string, { row: number; startModule: number }>();
+  private imageCache = new Map<string, HTMLImageElement>();
   private dragging = false;
 
   private spaceDown = false;
@@ -209,6 +212,7 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
       this.layers();
       this.connectMode();
       this.selectedWireId();
+      this.photos();
       if (!this.connectMode()) this.connectFromUid.set(null);
       queueMicrotask(() => this.render());
     });
@@ -912,6 +916,46 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
     return order[conductor] ?? 0;
   }
 
+  /** JPEG of the whole board, independent of the current zoom. */
+  snapshotJpeg(): string | null {
+    if (!this.stage) return null;
+    const saved = {
+      scale: this.stage.scaleX(),
+      x: this.stage.x(),
+      y: this.stage.y(),
+      width: this.stage.width(),
+      height: this.stage.height(),
+    };
+    const size = this.panelSize();
+    this.stage.scale({ x: 1, y: 1 });
+    this.stage.position({ x: 0, y: 0 });
+    this.stage.width(size.width + 24);
+    this.stage.height(size.height + 24);
+    this.stage.batchDraw();
+    const url = this.stage.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.86 });
+    this.stage.scale({ x: saved.scale, y: saved.scale });
+    this.stage.position({ x: saved.x, y: saved.y });
+    this.stage.width(saved.width);
+    this.stage.height(saved.height);
+    this.stage.batchDraw();
+    return url;
+  }
+
+  private devicePhoto(code: string): HTMLImageElement | null {
+    const url = this.photos()[code];
+    if (!url) return null;
+    let image = this.imageCache.get(url);
+    if (!image) {
+      image = new Image();
+      image.onload = () => {
+        if (!this.dragging) this.render();
+      };
+      image.src = url;
+      this.imageCache.set(url, image);
+    }
+    return image.complete && image.naturalWidth > 0 ? image : null;
+  }
+
   private rowY(row: number): number {
     return 10 + PADDING + 14 + row * (ROW_HEIGHT + ROW_GAP);
   }
@@ -932,23 +976,47 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
     });
 
     const fill = isSource ? '#bbdefb' : comp.groupId ? '#e3f2fd' : '#ffffff';
-    const stroke = isSource ? '#0d47a1' : comp.verified ? '#2e7d32' : '#e65100';
+    const stroke = isSource ? '#0d47a1' : comp.verified ? '#2e7d32' : '#90a4ae';
+    const photo = this.devicePhoto(comp.catalogNumber);
 
-    const rect = new Konva.Rect({
-      width,
-      height,
-      fill,
-      stroke,
-      strokeWidth: 1.5,
-      cornerRadius: 4,
-      shadowColor: 'rgba(0,0,0,0.15)',
-      shadowBlur: 3,
-      shadowOffsetY: 1,
-    });
-    group.add(rect);
+    if (photo) {
+      const scale = Math.min(width / photo.naturalWidth, (height - 16) / photo.naturalHeight);
+      const drawW = photo.naturalWidth * scale;
+      const drawH = photo.naturalHeight * scale;
+      group.add(new Konva.Rect({ width, height, fill: '#ffffff', stroke, strokeWidth: 1.5, cornerRadius: 3 }));
+      group.add(new Konva.Image({
+        image: photo,
+        x: (width - drawW) / 2,
+        y: 16 + (height - 16 - drawH) / 2,
+        width: drawW,
+        height: drawH,
+      }));
+      group.add(new Konva.Rect({ width, height: 16, fill: 'rgba(38,50,56,0.78)' }));
+      group.add(new Konva.Text({
+        width,
+        y: 2,
+        text: comp.label,
+        fontSize: 11,
+        fontStyle: 'bold',
+        fill: '#ffffff',
+        align: 'center',
+      }));
+    }
 
-    group.add(
-      new Konva.Text({
+    if (!photo) {
+      const rect = new Konva.Rect({
+        width,
+        height,
+        fill,
+        stroke,
+        strokeWidth: 1.5,
+        cornerRadius: 4,
+        shadowColor: 'rgba(0,0,0,0.15)',
+        shadowBlur: 3,
+        shadowOffsetY: 1,
+      });
+      group.add(rect);
+      group.add(new Konva.Text({
         x: 3,
         y: 4,
         width: width - 6,
@@ -957,10 +1025,8 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
         fontStyle: 'bold',
         fill: '#263238',
         align: 'center',
-      })
-    );
-    group.add(
-      new Konva.Text({
+      }));
+      group.add(new Konva.Text({
         x: 2,
         y: 22,
         width: width - 4,
@@ -970,10 +1036,8 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
         fill: '#546e7a',
         align: 'center',
         wrap: 'word',
-      })
-    );
-    group.add(
-      new Konva.Text({
+      }));
+      group.add(new Konva.Text({
         x: 2,
         y: height - 14,
         width: width - 4,
@@ -981,8 +1045,8 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
         fontSize: 9,
         fill: '#b0bec5',
         align: 'center',
-      })
-    );
+      }));
+    }
 
     group.on('click tap', (evt) => {
       evt.cancelBubble = true;
@@ -999,7 +1063,8 @@ export class PanelEditorComponent implements AfterViewInit, OnDestroy {
 
     group.on('dragstart', () => {
       this.dragging = true;
-      rect.stroke('#1565c0');
+      const frame = group.findOne('Rect');
+      if (frame instanceof Konva.Rect) frame.stroke('#1565c0');
     });
 
     group.on('dragmove', () => {

@@ -1,0 +1,95 @@
+<div class="page">
+  <app-step-trail [step]="2" />
+  <h1>2D изглед</h1>
+
+  @if (!offer()) {
+    <p class="lead">
+      Още няма прочетена схема. Отвори стъпка „Оферта“ отгоре, качи PDF и натисни „Прочети“.
+    </p>
+  } @else {
+    <p class="lead">
+      Чертежът е цялото табло от ETICAD. Апаратите се слагат по редовете според ширината им в милиметри. Таблото отдолу е предложение — смени го от списъка.
+    </p>
+    @for (board of offer()!.boards; track board.name) {
+      <section class="board">
+        <div class="head">
+          <h2>{{ board.name }}</h2>
+          <label>
+            Табло
+            @if (enclosures().length) {
+            <select
+              [value]="picked()[board.name] || ''"
+              (change)="choose(board.name, $any($event.target).value)"
+            >
+              <optgroup label="Вграден монтаж">
+                @for (item of flush(); track item.catalog_number) {
+                  <option [value]="item.catalog_number" [selected]="picked()[board.name] === item.catalog_number">{{ item.name }}</option>
+                }
+              </optgroup>
+              <optgroup label="Открит монтаж">
+                @for (item of surface(); track item.catalog_number) {
+                  <option [value]="item.catalog_number" [selected]="picked()[board.name] === item.catalog_number">{{ item.name }}</option>
+                }
+              </optgroup>
+            </select>
+            }
+          </label>
+        </div>
+        @if (proposal(board); as idea) {
+          <p class="meta">
+            @if (picked()[board.name] === idea.catalog_number) {
+              Предложено по ширината на апаратите: {{ idea.name }}. Заети {{ used(board) }} от {{ capacity(board) }} модула.
+            } @else {
+              Предложение: {{ idea.name }}. Сега е избрано друго. Заети {{ used(board) }} от {{ capacity(board) }} модула.
+              <button type="button" (click)="choose(board.name, idea.catalog_number)">Върни предложението</button>
+            }
+          </p>
+        }
+        @if (pack(board).leftover > 0) {
+          <p class="warn">Не се събират {{ pack(board).leftover }} модула. Избери по-голямо табло.</p>
+        }
+        @if (tall(board).length) {
+          <p class="warn">По-високи от модулния ред и излизат от чертежа: {{ tall(board).join(', ') }}.</p>
+        }
+        @if (faces()[picked()[board.name]]; as shell) {
+          <div
+            class="cabinet"
+            [style.width.px]="shell.width_mm * pxPerMm"
+            [style.height.px]="shell.height_mm * pxPerMm"
+          >
+            <img class="shell" [src]="shell.url" [alt]="option(picked()[board.name])?.name || 'Табло'" />
+            @for (device of pack(board).placed; track $index) {
+              @if (railsFor(board)[device.row]; as rail) {
+                @if (faces()[device.code]; as face) {
+                  <img
+                    class="device"
+                    [src]="face.url"
+                    [alt]="device.code"
+                    [title]="device.code + ' ' + device.name"
+                    [style.left.px]="(rail.x + device.xMm) * pxPerMm"
+                    [style.top.px]="(rail.y - face.height_mm / 2) * pxPerMm"
+                    [style.width.px]="device.modules * 18 * pxPerMm"
+                    [style.height.px]="face.height_mm * pxPerMm"
+                  />
+                } @else {
+                  <div
+                    class="device missing"
+                    [title]="device.code"
+                    [style.left.px]="(rail.x + device.xMm) * pxPerMm"
+                    [style.top.px]="(rail.y - 45) * pxPerMm"
+                    [style.width.px]="device.modules * 18 * pxPerMm"
+                    [style.height.px]="90 * pxPerMm"
+                  >няма 2D</div>
+                }
+              }
+            }
+          </div>
+        } @else if (faces()[picked()[board.name]] === null) {
+          <p class="warn">За избраното табло няма 2D чертеж в ETICAD.</p>
+        } @else {
+          <p class="meta">Зарежда се чертежът на таблото.</p>
+        }
+      </section>
+    }
+  }
+</div>

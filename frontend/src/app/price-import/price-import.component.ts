@@ -70,7 +70,7 @@ export class PriceImportComponent {
     this.api.importPrices(file, this.mapping(), this.headerRow()).subscribe({
       next: (res) => {
         this.result.set(
-          `Обновени: ${res.updated}, ненамерени: ${res.notFound}, пропуснати: ${res.skipped}`
+          `Записани цени: обновени ${res.updated}, нови кодове ${res.created ?? 0}, пропуснати ${res.skipped}`
         );
         this.loading.set(false);
       },
