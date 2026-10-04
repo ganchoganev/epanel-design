@@ -2,6 +2,7 @@
 
 # Compiled output
 /dist
+/public/pdf.worker.min.js
 /tmp
 /out-tsc
 /bazel-out

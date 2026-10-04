@@ -304,7 +304,7 @@ export class OfferFromPdfComponent implements OnDestroy {
     this.error.set('');
     try {
       const pdfjs = await import('pdfjs-dist');
-      pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+      pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
       const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
       const page = await pdf.getPage(1);
       const viewport = page.getViewport({ scale: 1.4 });
