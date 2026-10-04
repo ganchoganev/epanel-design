@@ -33,7 +33,7 @@ class EtiCatalogSeeder extends Seeder
         $this->seedBusbars();
         $this->seedEnclosures();
         $this->seedTerminals();
-        $this->seedOfferApparatus();
+        $this->ensureOfferApparatus();
         $this->seedGroups();
     }
 
@@ -405,6 +405,11 @@ class EtiCatalogSeeder extends Seeder
      * offer. Order codes and prices come from a working ETI offer, not from
      * the approximate ETIMAT 6 seed above.
      */
+    public function ensureOfferApparatus(): void
+    {
+        $this->seedOfferApparatus();
+    }
+
     private function seedOfferApparatus(): void
     {
         $breakers = [
@@ -417,7 +422,7 @@ class EtiCatalogSeeder extends Seeder
         ];
 
         foreach ($breakers as [$current, $poles, $curve, $code, $price]) {
-            $this->product($code, "Миниатюрен автоматичен прекъсвач ETIMAT P6 {$poles}p {$curve}{$current}", [
+            $this->offerProduct($code, "Миниатюрен автоматичен прекъсвач ETIMAT P6 {$poles}p {$curve}{$current}", [
                 'series' => 'ETIMAT P6',
                 'category' => 'MCB',
                 'poles' => $poles,
@@ -433,7 +438,7 @@ class EtiCatalogSeeder extends Seeder
             ]);
         }
 
-        $this->product('004671073', 'Автоматичен прекъсвач лят корпус EB2 250/3L 250A 3p', [
+        $this->offerProduct('004671073', 'Автоматичен прекъсвач лят корпус EB2 250/3L 250A 3p', [
             'series' => 'EB2',
             'category' => 'MCCB',
             'poles' => 3,
@@ -444,7 +449,7 @@ class EtiCatalogSeeder extends Seeder
             'data_source' => 'reference_offer',
         ]);
 
-        $this->product('002423114', 'Товаров прекъсвач SV 163 1p 63A', [
+        $this->offerProduct('002423114', 'Товаров прекъсвач SV 163 1p 63A', [
             'series' => 'SV',
             'category' => 'ISOLATOR',
             'poles' => 1,
@@ -455,7 +460,7 @@ class EtiCatalogSeeder extends Seeder
             'data_source' => 'reference_offer',
         ]);
 
-        $this->product('002423314', 'Товаров прекъсвач SV 363 3p 63A', [
+        $this->offerProduct('002423314', 'Товаров прекъсвач SV 363 3p 63A', [
             'series' => 'SV',
             'category' => 'ISOLATOR',
             'poles' => 3,
@@ -568,6 +573,18 @@ class EtiCatalogSeeder extends Seeder
     private function mcbHeat(float $current): float
     {
         return round(min(6.0, 0.5 + $current * 0.055), 2);
+    }
+
+    /** Keeps a price the user already uploaded for this code. */
+    private function offerProduct(string $code, string $name, array $attributes): void
+    {
+        $existing = EtiProduct::query()->where('catalog_number', $code)->first();
+        if ($existing instanceof EtiProduct && $existing->data_source === 'price_import' && $existing->price !== null) {
+            unset($attributes['price']);
+            $attributes['data_source'] = 'price_import';
+        }
+
+        $this->product($code, $name, $attributes);
     }
 
     private function product(string $code, string $name, array $attributes): void

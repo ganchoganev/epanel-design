@@ -58,6 +58,7 @@ if [ ! -f /var/www/backend/storage/app/eticad/eticad.sql ] && [ -f /var/www/etic
 fi
 
 php artisan migrate --force
+php artisan catalog:ensure-offer-codes
 php -r '
 require "vendor/autoload.php";
 $app = require "bootstrap/app.php";
