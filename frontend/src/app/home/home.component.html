@@ -1,30 +1,20 @@
+<app-bar title="Начало" />
 <div class="home">
-  <header class="top">
-    <div class="brand">
-      <span class="logo">ETI</span>
-      <div>
-        <div class="title">Panel Designer</div>
-        <div class="sub">Първо файловете, после проектът</div>
-      </div>
-    </div>
-    <button type="button" class="ghost" (click)="logout()">Изход</button>
-  </header>
-
   <section class="panel">
     <p class="kicker">1. Качи веднъж</p>
     <h1>Файлове за всички проекти</h1>
     <p class="lead">
-      Тези два файла се качват тук и после се ползват сами. Не се качват отново за всеки PDF.
+      Цените и новите кодове се качват тук и после се ползват сами. Не се качват отново за всеки PDF.
     </p>
     <a class="card" routerLink="/data/prices">
       <span class="step">Цени</span>
-      <strong>Excel с код и цена</strong>
-      <span>Актуалната цена за всеки код. Офертата я взима оттук.</span>
+      <strong>Каталог в базата и ценова листа</strong>
+      <span>Офертата чете каталога от базата. Файлът се качва на сървъра, после Excel с цените.</span>
     </a>
     <a class="card" routerLink="/data/codes">
       <span class="step">Заменени кодове</span>
-      <strong>Excel: стар код, нов код</strong>
-      <span>Стар код и новият, с който се заменя. Офертата ползва новия. Лицето идва от ETICAD, ако го има.</span>
+      <strong>Шаблон за нов или заместен код</strong>
+      <span>Сваля се попълненият шаблон и се качва след корекция. За кодове, които ги няма в ETICAD.</span>
     </a>
   </section>
 

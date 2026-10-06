@@ -37,7 +37,14 @@ import { AuthService } from '../services/auth.service';
         @if (error()) {
           <p class="error">{{ error() }}</p>
         }
-        <button type="submit" class="primary" [disabled]="busy()">Вход</button>
+        <button type="submit" class="primary" [disabled]="busy()">
+          @if (busy()) {
+            <span class="spin"></span>
+            Влизане…
+          } @else {
+            Вход
+          }
+        </button>
       </form>
     </div>
   `,
@@ -104,6 +111,10 @@ import { AuthService } from '../services/auth.service';
         font-size: 13px;
       }
       .primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
         margin-top: 8px;
         background: #2e7d32;
         color: #fff;
@@ -112,6 +123,17 @@ import { AuthService } from '../services/auth.service';
         border-radius: 6px;
         font-size: 15px;
         cursor: pointer;
+      }
+      .spin {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.45);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: turn 0.8s linear infinite;
+      }
+      @keyframes turn {
+        to { transform: rotate(360deg); }
       }
       .primary:disabled {
         opacity: 0.6;

@@ -1,20 +1,49 @@
 <div class="wizard">
-  <h3>Импорт на цени от Excel</h3>
-  <p class="hint">
-    Файлът се чете веднъж и цените остават за всяка следваща оферта. След прочитане посочете колоната с кода и колоната с цената.
-  </p>
+  <section class="block">
+    <p class="step-no">1</p>
+    <h3>Каталог за офертата</h3>
+    <p class="hint">Кодовете, с които се сравнява схемата. На този компютър вече са в базата. Сваляш файла само за да го качиш на Linux сървъра.</p>
+    <div class="step">
+      <button [disabled]="catalogBusy() || loading()" (click)="downloadCatalog()">Свали каталога от базата</button>
+    </div>
+    <div class="step">
+      <label class="file-btn">
+        <input type="file" accept=".csv,text/csv" (change)="onCatalogFile($event)" hidden />
+        {{ catalogFile ? catalogFile.name : 'Избери katalog.csv' }}
+      </label>
+      <button class="import-btn" [disabled]="catalogBusy() || loading() || !catalogFile" (click)="uploadCatalog()">Запиши каталога в базата</button>
+    </div>
+    @if (!catalogFile) {
+      <p class="hint">„Запиши каталога“ светва, след като избереш файла.</p>
+    }
+    @if (catalogMessage()) {
+      <div class="result">{{ catalogMessage() }}</div>
+    }
+  </section>
 
-  <div class="step">
-    <label class="file-btn">
-      <input type="file" accept=".xlsx,.xls,.csv" (change)="onFile($event)" hidden />
-      {{ file() ? file()!.name : 'Избери файл...' }}
-    </label>
-    <label class="header-row">
-      Ред със заглавия:
-      <input type="number" min="1" [ngModel]="headerRow()" (ngModelChange)="headerRow.set($event)" />
-    </label>
-    <button [disabled]="!file() || loading()" (click)="loadPreview()">Прочети</button>
-  </div>
+  <section class="block">
+    <p class="step-no">2</p>
+    <h3>Ценова листа</h3>
+    <p class="hint">Excel с колони Код, Описание, Модел и БРУТО EUR. Слага име и цена на код от каталога.</p>
+    <div class="step">
+      <label class="file-btn">
+        <input type="file" accept=".xlsx,.xls,.csv" (change)="onFile($event)" hidden />
+        {{ file() ? file()!.name : 'Избери ценовата листа' }}
+      </label>
+      <label class="header-row">
+        Ред със заглавията:
+        <input type="number" min="1" [ngModel]="headerRow()" (ngModelChange)="headerRow.set($event)" />
+      </label>
+      <button [disabled]="!file() || loading() || catalogBusy()" (click)="loadPreview()">
+        @if (loading() && !preview()) {
+          <span class="spin"></span>
+        }
+        Прочети колоните
+      </button>
+    </div>
+    @if (!file()) {
+      <p class="hint">„Прочети колоните“ светва, след като избереш листата. После се показва „Запиши цените в базата“.</p>
+    }
 
   @if (error()) {
     <div class="error">{{ error() }}</div>
@@ -22,13 +51,35 @@
 
   @if (preview(); as p) {
     <div class="mapping">
-      <h4>Мапване на колони</h4>
+      <h4>Коя колона от листата къде отива</h4>
       <div class="map-row">
         <span>Каталожен номер *</span>
         <select (change)="setMapping('catalog_number', $any($event.target).value)">
           <option value="">—</option>
           @for (idx of columnIndexes(); track idx) {
             <option [value]="idx" [selected]="mapping().catalog_number === idx">
+              {{ p.headers[idx] || 'Колона ' + (idx + 1) }}
+            </option>
+          }
+        </select>
+      </div>
+      <div class="map-row">
+        <span>Описание</span>
+        <select (change)="setMapping('name', $any($event.target).value)">
+          <option value="">—</option>
+          @for (idx of columnIndexes(); track idx) {
+            <option [value]="idx" [selected]="mapping().name === idx">
+              {{ p.headers[idx] || 'Колона ' + (idx + 1) }}
+            </option>
+          }
+        </select>
+      </div>
+      <div class="map-row">
+        <span>Модел</span>
+        <select (change)="setMapping('model', $any($event.target).value)">
+          <option value="">—</option>
+          @for (idx of columnIndexes(); track idx) {
+            <option [value]="idx" [selected]="mapping().model === idx">
               {{ p.headers[idx] || 'Колона ' + (idx + 1) }}
             </option>
           }
@@ -59,7 +110,7 @@
     </div>
 
     <div class="preview-table">
-      <h4>Преглед</h4>
+      <h4>Първите редове от листата</h4>
       <table>
         <thead>
           <tr>
@@ -81,11 +132,22 @@
     </div>
 
     <button class="import-btn" [disabled]="!canImport() || loading()" (click)="runImport()">
-      Импортирай цените
+      @if (loading()) {
+        <span class="spin"></span>
+      }
+      Запиши цените в базата
     </button>
   }
-
   @if (result()) {
     <div class="result">{{ result() }}</div>
   }
+  </section>
+
+  @if (loading() || catalogBusy()) {
+    <div class="busy" role="status" aria-live="polite">
+      <span class="spin"></span>
+      <span>{{ waitText() }}</span>
+    </div>
+  }
+
 </div>

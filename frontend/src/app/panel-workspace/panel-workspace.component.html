@@ -42,6 +42,7 @@
       <button (click)="export('excel'); closeOverlays()">Excel</button>
       <button (click)="export('csv'); closeOverlays()">CSV</button>
       <span class="sep"></span>
+      <app-bar variant="menu" />
       <button (click)="logout(); closeOverlays()" title="Изход">Изход</button>
     </div>
     @if (isNarrow()) {

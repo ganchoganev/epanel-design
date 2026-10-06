@@ -1,7 +1,8 @@
 import { Component, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { map } from 'rxjs';
+import { AppBarComponent } from './app-bar.component';
 
 export interface StepPageData {
   track: string;
@@ -15,7 +16,7 @@ export interface StepPageData {
 @Component({
   selector: 'app-step-page',
   standalone: true,
-  imports: [RouterLink],
+  imports: [AppBarComponent],
   templateUrl: './step-page.component.html',
   styleUrl: './step-page.component.scss',
 })

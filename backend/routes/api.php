@@ -26,6 +26,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/products/{product}', [ProductController::class, 'show']);
 
         Route::post('/catalog/import/eplan', [CatalogImportController::class, 'importEplan']);
+        Route::get('/catalog/file', [CatalogImportController::class, 'exportCatalog']);
+        Route::post('/catalog/file', [CatalogImportController::class, 'importCatalog']);
         Route::get('/catalog/import/logs', [CatalogImportController::class, 'logs']);
 
         Route::get('/prices/profiles', [PriceImportController::class, 'profiles']);
@@ -54,6 +56,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/offers/from-schedule/xlsx', [ScheduleOfferController::class, 'download']);
         Route::post('/offers/draft/xlsx', [ScheduleOfferController::class, 'downloadDraft']);
 
+        Route::get('/codes/template', [CodeReplacementController::class, 'template']);
+        Route::post('/codes/supplements', [CodeReplacementController::class, 'importSupplement']);
         Route::get('/codes/replacements', [CodeReplacementController::class, 'index']);
         Route::post('/codes/replacements', [CodeReplacementController::class, 'import']);
         Route::get('/eticad/photos/{code}', [EticadPhotoController::class, 'show']);

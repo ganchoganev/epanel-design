@@ -1,63 +1,153 @@
+<app-bar title="Оферта" />
+<div class="trail">
+  <app-step-trail [step]="1" [compact]="true" />
+</div>
 <div class="page">
-  <app-step-trail [step]="1" />
   <h1>Оферта от PDF</h1>
   <p class="lead">
-    Качете схемата на проектанта. Кодовете се въвеждат по тип — един код за всички бройки от този тип. Типовете без код са отбелязани и се попълват преди офертата.
+    Качете една или няколко схеми. Чете се целият чертеж. Код на ETI се слага само при точно едно изделие. Всичко непрочетено или без код се показва по-долу.
   </p>
 
-  <label class="upload">
-    PDF файл
-    <input type="file" accept="application/pdf,.pdf" (change)="onFile($event)" />
-  </label>
+  <section class="block">
+    <h2>Схеми</h2>
+    <p class="lead">Един или няколко PDF. Всеки избран файл се показва отделно по-долу.</p>
+    <label class="upload">
+      PDF файлове
+      <input type="file" accept="application/pdf,.pdf" multiple (change)="onFile($event)" />
+    </label>
+    @if (files().length) {
+      <ul class="picked">
+        @for (file of files(); track $index) {
+          <li>{{ file.name }}</li>
+        }
+      </ul>
+    }
+  </section>
   <div class="actions">
-    <button type="button" class="primary" (click)="preview()" [disabled]="busy()">Прочети</button>
-    <button type="button" (click)="download()" [disabled]="busy() || !offer()">Свали Excel</button>
+    <button type="button" class="primary" (click)="preview()" [disabled]="busy()">
+      @if (reading()) {
+        <span class="spin"></span>
+        {{ readingNote() || 'Чета схемата…' }}
+      } @else {
+        Прочети
+      }
+    </button>
+    <button type="button" (click)="download()" [disabled]="busy() || !offer()">
+      @if (busy() && !reading()) {
+        <span class="spin"></span>
+      }
+      Свали Excel
+    </button>
   </div>
   @if (error()) {
     <p class="error">{{ error() }}</p>
   }
+  @if (busy()) {
+    <div class="busy" role="status" aria-live="polite">
+      <span class="spin"></span>
+      <span>{{ reading() ? (readingNote() || 'Чета схемата…') : 'Записва се Excel…' }}</span>
+    </div>
+  }
 
   @if (offer(); as result) {
-    <div class="viewer">
-      <div class="zoombar">
-        <button type="button" (click)="zoomBy(1 / 1.25)" [disabled]="drawing()">−</button>
-        <span>{{ zoomPercent() }}%</span>
-        <button type="button" (click)="zoomBy(1.25)" [disabled]="drawing()">+</button>
-        <button type="button" (click)="fitSheet()" [disabled]="drawing()">Цял чертеж</button>
-        <span class="zoom-hint">Колелцето увеличава, влаченето мести. Ред от таблицата отваря мястото.</span>
-      </div>
-      <div
-        class="sheet"
-        #viewport
-        (pointerdown)="pointerDown($event)"
-        (pointermove)="pointerMove($event)"
-        (pointerup)="pointerUp()"
-        (pointercancel)="pointerUp()"
-      >
-        <div
-          class="paper"
-          [style.width.px]="sheetWidth()"
-          [style.height.px]="sheetHeight()"
-          [style.transform]="'translate(' + panX() + 'px,' + panY() + 'px) scale(' + viewScale() + ')'"
-        >
-        <canvas #sheet></canvas>
-        @for (mark of selectedMarks(); track mark.id) {
-          <span
-            class="dot"
-            [class.bad]="!mark.catalog_number"
-            [style.left.%]="mark.x * 100"
-            [style.top.%]="mark.y * 100"
-            [style.width.px]="14 / viewScale()"
-            [style.height.px]="14 / viewScale()"
-            [style.margin-left.px]="-7 / viewScale()"
-            [style.margin-top.px]="-7 / viewScale()"
-          ></span>
-        }
+    <p class="tally">
+      Прочетени {{ tally().read }}. Със код на ETI {{ tally().coded }}. Без код {{ tally().open }}.
+    </p>
+    @if (drawing()) {
+      <p class="hint">Схемата се чертае. Точките се слагат върху прочетените редове.</p>
+    }
+    @for (page of previews(); track page.title) {
+      <section class="preview">
+        <h2>{{ page.title }}</h2>
+        <p class="key">
+          <span><i class="swatch ok"></i> със код</span>
+          <span><i class="swatch miss"></i> без код</span>
+        </p>
+        <div class="zoombar">
+          <button type="button" (click)="zoomBy(page.title, 1 / 1.25)" [disabled]="zoomOf(page.title) <= 1">−</button>
+          <span>{{ zoomLabel(page.title) }}</span>
+          <button type="button" (click)="zoomBy(page.title, 1.25)" [disabled]="zoomOf(page.title) >= 5">+</button>
+          <button type="button" (click)="resetZoom(page.title)">Вмести</button>
         </div>
-      </div>
-    </div>
+        <div
+          class="viewport"
+          [attr.data-sheet]="page.id"
+          [class.can-pan]="zoomOf(page.title) > 1"
+          zoomWheel
+          (zoomWheel)="onWheel($event, page.title)"
+          (scroll)="onSheetScroll(page.title)"
+          (pointerdown)="onPanStart($event, page.title)"
+          (pointermove)="onPanMove($event)"
+          (pointerup)="onPanEnd($event)"
+          (pointercancel)="onPanEnd($event)"
+        >
+          <div class="sheet" [style.width.%]="zoomOf(page.title) * 100" [style.aspect-ratio]="page.aspect">
+            <canvas class="base" [attr.data-base]="page.id"></canvas>
+            <canvas class="sharp" [attr.data-sharp]="page.id"></canvas>
+            @for (mark of marksOn(page.title); track mark.key) {
+              <span
+                class="mark"
+                [class.ok]="mark.ok"
+                [class.miss]="!mark.ok"
+                [style.left.%]="mark.x"
+                [style.top.%]="mark.y"
+                [title]="mark.label"
+              ></span>
+            }
+          </div>
+        </div>
+      </section>
+    }
+    @if (result.unread.length) {
+      <h2>От таблицата, без код на ETI</h2>
+      <p class="gap">Тези редове са в таблицата на схемата. Не са автоматичен прекъсвач и затова няма изделие на ETI.</p>
+      <table class="types">
+        <thead>
+          <tr>
+            <th>Табло</th>
+            <th>Надпис</th>
+            <th>Брой</th>
+            <th>Защо</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of result.unread; track $index) {
+            <tr class="missing">
+              <td>{{ row.board }}</td>
+              <td>{{ row.text }}</td>
+              <td>{{ row.quantity }}</td>
+              <td>{{ row.reason }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+    @if (result.unmatched.length) {
+      <h2>Прочетено, без код на ETI</h2>
+      <p class="gap">Номиналът е прочетен. В каталога няма точно едно изделие на ETI за него.</p>
+      <table class="types">
+        <thead>
+          <tr>
+            <th>Табло</th>
+            <th>Тип</th>
+            <th>Брой</th>
+            <th>Защо няма код</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of result.unmatched; track row.board + row.device_type + row.rating) {
+            <tr class="missing">
+              <td>{{ row.board }}</td>
+              <td>{{ row.device_type }} {{ row.rating }}</td>
+              <td>{{ row.quantity }}</td>
+              <td>{{ row.reason }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
     <h2>Кодове по тип</h2>
-    <p class="lead">Избери ред и чертежът се премества върху този тип. Записът сменя кода на всички бройки от типа.</p>
+    <p class="lead">Записът сменя кода на всички бройки от този тип.</p>
     <table class="types">
       <thead>
         <tr>
@@ -70,15 +160,15 @@
       </thead>
       <tbody>
         @for (group of groups(); track group.key) {
-          <tr [class.missing]="!group.catalog_number" [class.on]="selectedKey() === group.key" (click)="selectGroup(group.key)">
+          <tr [class.missing]="!group.catalog_number">
             <td>{{ group.board }}</td>
             <td>{{ group.device_type }} {{ group.rating }}</td>
             <td>{{ group.quantity }}</td>
-            <td (click)="$event.stopPropagation()">
+            <td>
               <input [value]="group.catalog_number ?? ''" [placeholder]="group.catalog_number ? '' : 'въведи код'" #codeField />
               <button type="button" (click)="applyGroup(group, codeField.value)">Запиши</button>
             </td>
-            <td>{{ group.catalog_number ? group.name : 'Без код — въведи преди офертата' }}</td>
+            <td>{{ group.catalog_number ? group.name : (group.reason || 'Без код — въведи преди офертата') }}</td>
           </tr>
         }
       </tbody>

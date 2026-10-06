@@ -1,20 +1,38 @@
+<app-bar title="Кодове" />
 <div class="page">
-  <a class="back" routerLink="/">← Меню</a>
   <p class="kicker">Качва се веднъж</p>
-  <h1>Заменени кодове</h1>
+  <h1>Нови и заместени кодове</h1>
   <p class="lead">
-    Excel или CSV с две колони: стар код и нов код. Първият ред може да е заглавие.
-    Файлът заменя целия списък. Следващите оферти и изгледи ползват новия код.
-    Чертежът се взима от ETICAD. Ако новият код го няма там, лицето остава празно.
+    Офертата чете каталога в базата. Тук се сваля попълненият шаблон за кодовете, които все още ги няма,
+    и се качва обратно след корекция. Листът е „Данни“: код, параметри, заменян код и надпис от схемата.
   </p>
 
+  <div class="actions">
+    <button type="button" (click)="downloadTemplate()" [disabled]="busy()">
+      @if (busy()) {
+        <span class="spin"></span>
+      }
+      Свали шаблон
+    </button>
+  </div>
   <label class="upload">
-    Файл със замени
-    <input type="file" accept=".xlsx,.xls,.csv" (change)="onFile($event)" />
+    Попълнен шаблон
+    <input type="file" accept=".xlsx,.xls" (change)="onFile($event)" />
   </label>
   <div class="actions">
-    <button type="button" class="primary" (click)="upload()" [disabled]="busy()">Запази замените</button>
+    <button type="button" class="primary" (click)="upload()" [disabled]="busy()">
+      @if (busy()) {
+        <span class="spin"></span>
+      }
+      Запиши в каталога
+    </button>
   </div>
+  @if (busy()) {
+    <div class="busy" role="status" aria-live="polite">
+      <span class="spin"></span>
+      <span>{{ waitText() }}</span>
+    </div>
+  }
   @if (error()) {
     <p class="error">{{ error() }}</p>
   }

@@ -3,35 +3,53 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\Offers\AutocadScheduleParser;
-use App\Services\Offers\OfferDraft;
 use App\Services\Offers\OfferBoard;
+use App\Services\Offers\OfferDraft;
 use App\Services\Offers\OfferLine;
 use App\Services\Offers\OfferWorkbookWriter;
+use App\Services\Offers\ScheduleClaudeReader;
 use App\Services\Offers\ScheduleOfferMapper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ScheduleOfferController extends Controller
 {
     public function __construct(
-        private readonly AutocadScheduleParser $parser,
+        private readonly ScheduleClaudeReader $reader,
         private readonly ScheduleOfferMapper $mapper,
         private readonly OfferWorkbookWriter $writer,
     ) {}
 
     public function preview(Request $request): JsonResponse
     {
-        $draft = $this->draftFromRequest($request);
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        try {
+            $draft = $this->draftFromRequest($request);
+        } catch (RuntimeException $exception) {
+            if ($exception->getMessage() === 'NEEDS_TILES') {
+                return response()->json([
+                    'message' => 'Надписите са част от чертежа. Разреждам схемата.',
+                    'needs_tiles' => true,
+                ], 422);
+            }
+            abort(422, $exception->getMessage());
+        }
 
         return response()->json($draft->toArray());
     }
 
     public function download(Request $request): BinaryFileResponse
     {
-        $draft = $this->draftFromRequest($request);
+        try {
+            $draft = $this->draftFromRequest($request);
+        } catch (RuntimeException $exception) {
+            abort(422, 'Първо прочетете схемата.');
+        }
 
         return $this->send($draft);
     }
@@ -78,15 +96,58 @@ class ScheduleOfferController extends Controller
     private function draftFromRequest(Request $request): OfferDraft
     {
         $request->validate([
-            'file' => ['required', 'file', 'max:15360'],
+            'files' => ['required_without:file', 'array', 'min:1', 'max:8'],
+            'files.*' => ['file', 'max:15360'],
+            'file' => ['required_without:files', 'file', 'max:15360'],
+            'tiles' => ['nullable', 'array', 'max:40'],
+            'tiles.*' => ['file', 'mimes:jpeg,jpg,png', 'max:5120'],
         ]);
 
-        $path = $request->file('file')->getRealPath();
-        $circuits = $this->parser->parse($path);
-        if ($circuits === []) {
-            abort(422, 'Не разчетох апарати. PDF трябва да е плот от AutoCAD с колона „Тип прекъсвач“.');
+        $uploaded = $request->file('files', []);
+        if ($uploaded instanceof UploadedFile) {
+            $uploaded = [$uploaded];
+        }
+        if ($uploaded === [] && $request->file('file') instanceof UploadedFile) {
+            $uploaded = [$request->file('file')];
+        }
+        foreach ($uploaded as $file) {
+            if (strtolower($file->getClientOriginalExtension()) !== 'pdf') {
+                abort(422, 'Качват се само PDF файлове.');
+            }
         }
 
-        return $this->mapper->map($circuits);
+        $tiles = $request->file('tiles', []);
+        if ($tiles instanceof UploadedFile) {
+            $tiles = [$tiles];
+        }
+
+        try {
+            $read = $this->reader->read(array_values($uploaded), array_values($tiles));
+        } catch (RuntimeException $exception) {
+            if ($exception->getMessage() === 'NEEDS_TILES') {
+                throw $exception;
+            }
+            abort(422, $exception->getMessage());
+        }
+
+        $draft = $this->mapper->map($read['circuits']);
+        $note = $draft->note;
+        $tableCount = (int) ($read['table_count'] ?? 0);
+        if ($tableCount > 0) {
+            $recognized = count($read['circuits']);
+            foreach ($read['unread'] as $row) {
+                $recognized += (int) $row['quantity'];
+            }
+            $note = 'Таблицата описва '.$tableCount.' елемента. Разпознати са '.$recognized.'. '.$note;
+        }
+        if ($read['unread'] !== []) {
+            $note .= ' Има надписи от схемата, които не се разчетоха като апарат.';
+        }
+        if ($draft->unmatched !== []) {
+            $note .= ' Има прочетени апарати без единствен код на ETI.';
+        }
+        $note .= ' Сравнението е с каталога в базата по полюси, ток, крива, дефектен ток и тип. Запомнен надпис от схемата се попълва със същия код.';
+
+        return new OfferDraft($draft->boards, $draft->unmatched, trim($note), $draft->placements, $read['unread']);
     }
 }

@@ -1,6 +1,7 @@
 import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { OfferDraftStore } from './offer-draft.store';
 import { ApiService, ProductFace, ScheduleOffer } from '../services/api.service';
+import { AppBarComponent } from '../steps/app-bar.component';
 import { StepTrailComponent } from '../steps/step-trail.component';
 import {
   EnclosureOption,
@@ -26,7 +27,7 @@ type Board = ScheduleOffer['boards'][number];
 @Component({
   selector: 'app-board-view',
   standalone: true,
-  imports: [StepTrailComponent],
+  imports: [StepTrailComponent, AppBarComponent],
   templateUrl: './board-view.component.html',
   styleUrl: './board-view.component.scss',
 })

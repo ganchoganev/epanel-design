@@ -87,6 +87,12 @@ export class ApiService {
     form.append('header_row', String(headerRow));
     form.append('column_mapping[catalog_number]', String(mapping.catalog_number));
     form.append('column_mapping[price]', String(mapping.price));
+    if (mapping.name !== null && mapping.name !== undefined) {
+      form.append('column_mapping[name]', String(mapping.name));
+    }
+    if (mapping.model !== null && mapping.model !== undefined) {
+      form.append('column_mapping[model]', String(mapping.model));
+    }
     if (mapping.currency !== null && mapping.currency !== undefined) {
       form.append('column_mapping[currency]', String(mapping.currency));
     }
@@ -99,9 +105,14 @@ export class ApiService {
     return this.http.post(`${this.base}/catalog/import/eplan`, form);
   }
 
-  previewScheduleOffer(file: File): Observable<ScheduleOffer> {
+  previewScheduleOffer(files: File[], tiles: File[] = []): Observable<ScheduleOffer> {
     const form = new FormData();
-    form.append('file', file);
+    for (const file of files) {
+      form.append('files[]', file);
+    }
+    for (const tile of tiles) {
+      form.append('tiles[]', tile);
+    }
     return this.http.post<ScheduleOffer>(`${this.base}/offers/from-schedule`, form);
   }
 
@@ -120,6 +131,29 @@ export class ApiService {
 
   downloadExport(id: number, type: 'pdf' | 'csv' | 'excel'): Observable<Blob> {
     return this.http.get(`${this.base}/projects/${id}/export/${type}`, { responseType: 'blob' });
+  }
+
+  downloadCatalogFile(): Observable<Blob> {
+    return this.http.get(`${this.base}/catalog/file`, { responseType: 'blob' });
+  }
+
+  importCatalogFile(file: File): Observable<{ imported: number; updated: number; skipped: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ imported: number; updated: number; skipped: number }>(`${this.base}/catalog/file`, form);
+  }
+
+  downloadCodeTemplate(): Observable<Blob> {
+    return this.http.get(`${this.base}/codes/template`, { responseType: 'blob' });
+  }
+
+  importCodeSupplement(file: File): Observable<{ imported: number; replaced: number; linked: number; skipped: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ imported: number; replaced: number; linked: number; skipped: number }>(
+      `${this.base}/codes/supplements`,
+      form
+    );
   }
 
   codeReplacements(): Observable<{ count: number; rows: CodeReplacement[] }> {
@@ -156,6 +190,8 @@ export interface PricePreview {
 
 export interface PriceMapping {
   catalog_number: number | null;
+  name: number | null;
+  model: number | null;
   price: number | null;
   currency: number | null;
 }
@@ -187,6 +223,7 @@ export interface SchedulePlacement {
   board: string;
   x: number;
   y: number;
+  file?: string;
   device_type: string;
   rating: string;
   catalog_number: string | null;
@@ -207,6 +244,15 @@ export interface ScheduleOffer {
     device_type: string;
     quantity: number;
     reason: string;
+  }>;
+  unread: Array<{
+    board: string;
+    text: string;
+    quantity: number;
+    reason: string;
+    x?: number;
+    y?: number;
+    file?: string;
   }>;
   note: string;
   placements: SchedulePlacement[];

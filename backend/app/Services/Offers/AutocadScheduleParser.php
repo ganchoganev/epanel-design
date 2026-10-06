@@ -9,6 +9,14 @@ namespace App\Services\Offers;
  */
 class AutocadScheduleParser
 {
+    /**
+     * @return list<array{x: float, y: float, px: float, py: float, t: string}>
+     */
+    public function textItems(string $path): array
+    {
+        return $this->extractText($path);
+    }
+
     /** @return list<ScheduleCircuit> */
     public function parse(string $path): array
     {
@@ -159,6 +167,7 @@ class AutocadScheduleParser
             return [];
         }
 
+        $glyphMaps = $this->identityGlyphMaps($raw);
         preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $raw, $streams);
         $cmaps = [];
         foreach ($streams[1] as $stream) {
@@ -188,7 +197,7 @@ class AutocadScheduleParser
         $stack = [];
         foreach ($this->pageStreams($raw) as $decoded) {
             if (! preg_match_all(
-                '/\/F(\d+)\s+[0-9.]+\s+Tf|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+Tm|<([0-9A-Fa-f]+)>\s*Tj|\(((?:\\\\.|[^\\\\)])*)\)\s*Tj|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+cm|(?:^|\s)(q|Q)(?=\s)/',
+                '/\/F(\d+)\s+[0-9.]+\s+Tf|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+Tm|<([0-9A-Fa-f]+)>\s*Tj|\(((?:\\\\.|[^\\\\)])*)\)\s*Tj|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+cm|(?:^|\s)(q|Q)(?=\s)|([0-9.\-]+)\s+([0-9.\-]+)\s+Td/',
                 $decoded,
                 $ops,
                 PREG_SET_ORDER
@@ -220,13 +229,18 @@ class AutocadScheduleParser
                     $y = (float) $op[7];
                     continue;
                 }
+                if (($op[17] ?? '') !== '') {
+                    $x = (float) $op[17];
+                    $y = (float) $op[18];
+                    continue;
+                }
                 $literal = $op[9] ?? '';
                 if ($op[8] === '' && $literal === '') {
                     continue;
                 }
                 $text = $literal !== ''
                     ? trim($this->unescapePdf($literal))
-                    : $this->decodeHex(strtoupper($op[8]), $cmaps[max(0, $font - 1)] ?? []);
+                    : $this->decodeHex(strtoupper($op[8]), $cmaps[max(0, $font - 1)] ?? [], $glyphMaps[$font] ?? []);
                 if ($text !== '') {
                     [$px, $py] = $this->applyMatrix($x, $y, $ctm);
                     $items[] = ['x' => $x, 'y' => $y, 'px' => $px, 'py' => $py, 't' => $text];
@@ -287,15 +301,168 @@ class AutocadScheduleParser
 
     /**
      * @param  array<string, string>  $map
+     * @param  array<int, string>  $glyphs
      */
-    private function decodeHex(string $hex, array $map): string
+    private function decodeHex(string $hex, array $map, array $glyphs = []): string
     {
         $text = '';
         for ($i = 0; $i + 4 <= strlen($hex); $i += 4) {
-            $text .= $map[substr($hex, $i, 4)] ?? '';
+            $key = substr($hex, $i, 4);
+            if (isset($map[$key])) {
+                $text .= $map[$key];
+                continue;
+            }
+            $text .= $glyphs[hexdec($key)] ?? '';
         }
 
         return trim($text);
+    }
+
+    /**
+     * AutoCAD Identity-H text has no ToUnicode map. The character is the font glyph.
+     *
+     * @return array<int, array<int, string>>
+     */
+    private function identityGlyphMaps(string $raw): array
+    {
+        if (! preg_match('/\/Font\s*<<(.*?)>>/s', $raw, $fonts)) {
+            return [];
+        }
+        if (! preg_match_all('/\/F(\d+)\s+(\d+)\s+0\s+R/', $fonts[1], $refs, PREG_SET_ORDER)) {
+            return [];
+        }
+
+        $maps = [];
+        foreach ($refs as $ref) {
+            $body = $this->objectBody($raw, (int) $ref[2]);
+            if (! str_contains($body, '/Identity-H')) {
+                continue;
+            }
+            if (! preg_match('/\/FontDescriptor\s+(\d+)\s+0\s+R/', $body, $descriptor)) {
+                continue;
+            }
+            $described = $this->objectBody($raw, (int) $descriptor[1]);
+            if (! preg_match('/\/FontFile2\s+(\d+)\s+0\s+R/', $described, $file)) {
+                continue;
+            }
+            $ttf = $this->objectStream($raw, (int) $file[1]);
+            if ($ttf === '') {
+                continue;
+            }
+            $maps[(int) $ref[1]] = $this->glyphMap($ttf);
+        }
+
+        return $maps;
+    }
+
+    private function objectBody(string $raw, int $id): string
+    {
+        if (! preg_match('/(?<![0-9])'.$id.'\s+0\s+obj(.*?)endobj/s', $raw, $match)) {
+            return '';
+        }
+
+        return $match[1];
+    }
+
+    private function objectStream(string $raw, int $id): string
+    {
+        if (! preg_match('/(?<![0-9])'.$id.'\s+0\s+obj/', $raw, $match, PREG_OFFSET_CAPTURE)) {
+            return '';
+        }
+        $start = $match[0][1];
+        $head = substr($raw, $start, 500);
+        if (! preg_match('/\/Length\s+(\d+)/', $head, $length)) {
+            return '';
+        }
+        $pos = strpos($raw, 'stream', $start);
+        if ($pos === false || $pos > $start + 600) {
+            return '';
+        }
+        $pos += 6;
+        if (($raw[$pos] ?? '') === "\r") {
+            $pos++;
+        }
+        if (($raw[$pos] ?? '') === "\n") {
+            $pos++;
+        }
+        $plain = $this->inflate(substr($raw, $pos, (int) $length[1]));
+
+        return $plain === false ? '' : $plain;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function glyphMap(string $ttf): array
+    {
+        if (strlen($ttf) < 12) {
+            return [];
+        }
+        $tables = unpack('n', substr($ttf, 4, 2))[1];
+        $cmapOff = null;
+        $cmapLen = 0;
+        for ($i = 0; $i < $tables; $i++) {
+            $record = 12 + $i * 16;
+            if (substr($ttf, $record, 4) !== 'cmap') {
+                continue;
+            }
+            $cmapOff = unpack('N', substr($ttf, $record + 8, 4))[1];
+            $cmapLen = unpack('N', substr($ttf, $record + 12, 4))[1];
+        }
+        if ($cmapOff === null) {
+            return [];
+        }
+        $cmap = substr($ttf, $cmapOff, $cmapLen);
+        $count = unpack('n', substr($cmap, 2, 2))[1];
+        $chosen = null;
+        for ($i = 0; $i < $count; $i++) {
+            $record = 4 + $i * 8;
+            $platform = unpack('n', substr($cmap, $record, 2))[1];
+            $encoding = unpack('n', substr($cmap, $record + 2, 2))[1];
+            $offset = unpack('N', substr($cmap, $record + 4, 4))[1];
+            $format = unpack('n', substr($cmap, $offset, 2))[1];
+            if ($platform === 3 && ($encoding === 1 || $encoding === 10) && ($format === 4 || $format === 12)) {
+                $chosen = [$offset, $format];
+                if ($format === 12) {
+                    break;
+                }
+            }
+        }
+        if ($chosen === null || $chosen[1] !== 4) {
+            return [];
+        }
+        $offset = $chosen[0];
+        $segments = (int) (unpack('n', substr($cmap, $offset + 6, 2))[1] / 2);
+        $end = $offset + 14;
+        $start = $end + $segments * 2 + 2;
+        $delta = $start + $segments * 2;
+        $range = $delta + $segments * 2;
+        $map = [];
+        for ($i = 0; $i < $segments; $i++) {
+            $last = unpack('n', substr($cmap, $end + $i * 2, 2))[1];
+            $first = unpack('n', substr($cmap, $start + $i * 2, 2))[1];
+            $shift = unpack('n', substr($cmap, $delta + $i * 2, 2))[1];
+            if ($shift >= 0x8000) {
+                $shift -= 0x10000;
+            }
+            $rangeOffset = unpack('n', substr($cmap, $range + $i * 2, 2))[1];
+            for ($code = $first; $code <= $last && $code < 0xFFFF; $code++) {
+                if ($rangeOffset === 0) {
+                    $gid = ($code + $shift) & 0xFFFF;
+                } else {
+                    $glyphPos = $range + $i * 2 + $rangeOffset + 2 * ($code - $first);
+                    $gid = unpack('n', substr($cmap, $glyphPos, 2))[1];
+                    if ($gid !== 0) {
+                        $gid = ($gid + $shift) & 0xFFFF;
+                    }
+                }
+                if ($gid !== 0) {
+                    $map[$gid] = mb_chr($code, 'UTF-8');
+                }
+            }
+        }
+
+        return $map;
     }
 
     private function unescapePdf(string $value): string
@@ -331,6 +498,24 @@ class AutocadScheduleParser
 
         return $box;
     }
+
+    /**
+     * Where a text point lands on the page image, as fractions of the width and height.
+     *
+     * @return array{0: float, 1: float}
+     */
+    public function canvasFraction(string $path, float $x, float $y): array
+    {
+        if (! isset($this->pageBoxes[$path])) {
+            $raw = file_get_contents($path);
+            $this->pageBoxes[$path] = $this->pageBox(is_string($raw) ? $raw : '');
+        }
+
+        return $this->viewportFractions($x, $y, $this->pageBoxes[$path]);
+    }
+
+    /** @var array<string, array{x0: float, y0: float, x1: float, y1: float, rotate: int}> */
+    private array $pageBoxes = [];
 
     /**
      * Same mapping pdf.js uses for a rotated page: user space to the canvas,

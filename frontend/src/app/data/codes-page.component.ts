@@ -1,12 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { ApiService, CodeReplacement } from '../services/api.service';
+import { AppBarComponent } from '../steps/app-bar.component';
 
 @Component({
   selector: 'app-codes-page',
   standalone: true,
-  imports: [RouterLink],
+  imports: [AppBarComponent],
   templateUrl: './codes-page.component.html',
   styleUrl: './data-page.scss',
 })
@@ -14,6 +14,7 @@ export class CodesPageComponent implements OnInit {
   private api = inject(ApiService);
 
   readonly busy = signal(false);
+  readonly waitText = signal('');
   readonly error = signal('');
   readonly message = signal('');
   readonly rows = signal<CodeReplacement[]>([]);
@@ -37,17 +38,39 @@ export class CodesPageComponent implements OnInit {
     this.error.set('');
   }
 
+  downloadTemplate(): void {
+    this.busy.set(true);
+    this.waitText.set('Сваля се шаблонът…');
+    this.error.set('');
+    this.api.downloadCodeTemplate().subscribe({
+      next: (blob) => {
+        this.busy.set(false);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'novi-kodove.xlsx';
+        link.click();
+        URL.revokeObjectURL(url);
+      },
+      error: () => {
+        this.busy.set(false);
+        this.error.set('Шаблонът не можа да се свали.');
+      },
+    });
+  }
+
   upload(): void {
     if (!this.file) {
-      this.error.set('Изберете файл.');
+      this.error.set('Изберете попълнения шаблон.');
       return;
     }
     this.busy.set(true);
+    this.waitText.set('Записвам кодовете…');
     this.error.set('');
-    this.api.importCodeReplacements(this.file).subscribe({
+    this.api.importCodeSupplement(this.file).subscribe({
       next: (res) => {
         this.busy.set(false);
-        this.message.set(`Записани замени: ${res.count}. Пропуснати редове: ${res.skipped}.`);
+        this.message.set(`Нови кодове: ${res.imported}. Замени: ${res.replaced}. Връзки към схема: ${res.linked}. Пропуснати редове: ${res.skipped}.`);
         this.ngOnInit();
       },
       error: (err: HttpErrorResponse) => {
@@ -56,4 +79,5 @@ export class CodesPageComponent implements OnInit {
       },
     });
   }
+
 }

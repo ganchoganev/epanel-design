@@ -1,19 +1,17 @@
 import { Component } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { PriceImportComponent } from '../price-import/price-import.component';
+import { AppBarComponent } from '../steps/app-bar.component';
 
 @Component({
   selector: 'app-prices-page',
   standalone: true,
-  imports: [RouterLink, PriceImportComponent],
+  imports: [PriceImportComponent, AppBarComponent],
   template: `
+    <app-bar title="Цени" />
     <div class="page">
-      <a class="back" routerLink="/">← Меню</a>
       <p class="kicker">Качва се веднъж</p>
-      <h1>Цени</h1>
-      <p class="lead">
-        Тук се качва Excel-ът с актуална цена за всеки код. След записа новите оферти ползват тези цени, без да качваш файла отново.
-      </p>
+      <h1>Каталог и цени</h1>
+      <p class="lead">Две отделни неща. Офертата чете каталога от базата. Ценовата листа само слага цени върху него.</p>
       <app-price-import />
     </div>
   `,

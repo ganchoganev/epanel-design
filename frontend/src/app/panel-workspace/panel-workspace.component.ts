@@ -6,6 +6,7 @@ import { PanelEditorComponent } from '../editor/panel-editor.component';
 import { PriceImportComponent } from '../price-import/price-import.component';
 import { ConfiguratorComponent } from '../configurator/configurator.component';
 import { SingleLineDiagramComponent } from '../schematic/single-line-diagram.component';
+import { AppBarComponent } from '../steps/app-bar.component';
 import { StepTrailComponent } from '../steps/step-trail.component';
 import { ApiService } from '../services/api.service';
 import { DesignStore } from '../services/design-store.service';
@@ -44,6 +45,7 @@ const ENCLOSURE_PRESETS: EnclosureConfig[] = [
     ConfiguratorComponent,
     SingleLineDiagramComponent,
     StepTrailComponent,
+    AppBarComponent,
   ],
   templateUrl: './panel-workspace.component.html',
   styleUrl: './panel-workspace.component.scss',

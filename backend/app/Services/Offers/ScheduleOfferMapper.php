@@ -3,6 +3,7 @@
 namespace App\Services\Offers;
 
 use App\Models\EtiProduct;
+use App\Models\ScheduleMap;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -28,27 +29,43 @@ class ScheduleOfferMapper
         $unmatched = [];
 
         foreach ($circuits as $circuit) {
-            $product = $this->match($circuit);
-            if (! $product instanceof EtiProduct) {
+            $saved = ScheduleMap::query()
+                ->where('signature', ScheduleMap::signature($circuit->rating))
+                ->first();
+            $product = $saved instanceof ScheduleMap ? null : $this->match($circuit);
+            if (! $saved instanceof ScheduleMap && ! $product instanceof EtiProduct) {
                 $key = $circuit->board.'|'.$circuit->deviceType.'|'.$circuit->rating;
                 if (! isset($unmatched[$key])) {
-                    $unmatched[$key] = [
-                        'board' => $circuit->board,
-                        'rating' => $circuit->rating,
-                        'device_type' => $circuit->deviceType,
-                        'quantity' => 0,
-                        'reason' => 'Няма единствен код на ETI за този номинал.',
-                    ];
+                $unmatched[$key] = [
+                    'board' => $circuit->board,
+                    'rating' => $circuit->rating,
+                    'device_type' => $circuit->deviceType,
+                    'quantity' => 0,
+                    'reason' => $this->unmatchedReason($circuit),
+                ];
                 }
                 $unmatched[$key]['quantity']++;
                 $placements[] = $this->placement($circuit, count($placements), null, null, null);
                 continue;
             }
 
-            $code = $product->catalog_number;
-            $name = $product->name;
-            $price = $product->price !== null ? (float) $product->price : null;
-            if (isset($replacements[$code])) {
+            if ($saved instanceof ScheduleMap) {
+                $code = $saved->catalog_number;
+                $name = $saved->name;
+                $price = $saved->unit_price !== null ? (float) $saved->unit_price : null;
+                $catalog = EtiProduct::query()->where('catalog_number', $code)->first();
+                if ($catalog instanceof EtiProduct) {
+                    $name = $catalog->name;
+                    if ($catalog->price !== null) {
+                        $price = (float) $catalog->price;
+                    }
+                }
+            } else {
+                $code = $product->catalog_number;
+                $name = $product->name;
+                $price = $product->price !== null ? (float) $product->price : null;
+            }
+            if ($saved === null && isset($replacements[$code])) {
                 $code = $replacements[$code];
                 $replacement = EtiProduct::query()->where('catalog_number', $code)->first();
                 if ($replacement instanceof EtiProduct) {
@@ -101,7 +118,7 @@ class ScheduleOfferMapper
         return new OfferDraft($offerBoards, array_values($unmatched), self::SWITCH_NOTE, $placements);
     }
 
-    /** @return array{id: int, board: string, x: float, y: float, device_type: string, rating: string, catalog_number: ?string, name: ?string, unit_price: ?float} */
+    /** @return array{id: int, board: string, x: float, y: float, file: string, device_type: string, rating: string, catalog_number: ?string, name: ?string, unit_price: ?float} */
     private function placement(ScheduleCircuit $circuit, int $id, ?string $code, ?string $name, ?float $price): array
     {
         return [
@@ -109,6 +126,7 @@ class ScheduleOfferMapper
             'board' => $circuit->board,
             'x' => $circuit->pageX,
             'y' => $circuit->pageY,
+            'file' => $circuit->sourceFile,
             'device_type' => $circuit->deviceType,
             'rating' => $circuit->rating,
             'catalog_number' => $code,
@@ -136,29 +154,125 @@ class ScheduleOfferMapper
 
     private function match(ScheduleCircuit $circuit): ?EtiProduct
     {
+        $matches = $this->candidates($circuit);
+        if ($matches === null) {
+            return null;
+        }
+        if ($matches->count() === 1) {
+            return $matches->first();
+        }
+        $added = $matches->where('data_source', 'supplement');
+        if ($added->count() === 1) {
+            return $added->first();
+        }
+        $preferred = $matches->filter(
+            fn (EtiProduct $row) => $row->series === 'ETIMAT P6' || str_starts_with((string) $row->series, 'EB2')
+        );
+        if ($preferred->count() === 1) {
+            return $preferred->first();
+        }
+        $standard = $preferred->filter(
+            fn (EtiProduct $row) => (float) $row->breaking_capacity_ka === 6.0
+        );
+        if ($standard->count() === 1) {
+            return $standard->first();
+        }
+
+        return null;
+    }
+
+    private function unmatchedReason(ScheduleCircuit $circuit): string
+    {
+        $label = $circuit->deviceType.' '.$circuit->rating;
+        if ($circuit->deviceType === 'МАП' && $circuit->curve === null) {
+            return 'Прочетено '.$label.', но няма крива. Без крива не се избира изделие ETIMAT P6.';
+        }
+
+        $matches = $this->candidates($circuit);
+        if ($matches === null) {
+            return 'Прочетено '.$label.', но този тип не се съпоставя към изделие на ETI.';
+        }
+        if ($circuit->deviceType === 'ДТЗ') {
+            return 'Прочетено '.$label.'. В каталога eti_products няма единствен ред със същите полюси, ток, дефектен ток и тип.';
+        }
+        $series = $circuit->deviceType === 'ПЛК' ? 'EB2' : 'ETIMAT P6';
+        if ($matches->isEmpty()) {
+            return 'Прочетено '.$label.', но в каталога няма '.$series.' с тези полюси, ток и крива.';
+        }
+
+        return 'Прочетено '.$label.', но в каталога eti_products има повече от едно изделие с тези параметри. Новият код се добавя от шаблона в „Заменени кодове“.';
+    }
+
+    private function candidates(ScheduleCircuit $circuit): ?\Illuminate\Support\Collection
+    {
         if ($circuit->deviceType === 'МАП') {
             if ($circuit->curve === null) {
                 return null;
             }
-            $query = EtiProduct::query()
-                ->where('series', 'ETIMAT P6')
+
+            return EtiProduct::query()
                 ->where('category', 'MCB')
                 ->where('poles', $circuit->poles)
                 ->where('trip_curve', $circuit->curve)
-                ->where('rated_current_a', $circuit->current);
-        } elseif ($circuit->deviceType === 'ПЛК') {
-            $query = EtiProduct::query()
-                ->where('series', 'EB2')
+                ->where('rated_current_a', $circuit->current)
+                ->get();
+        }
+        if ($circuit->deviceType === 'ПЛК') {
+            return EtiProduct::query()
                 ->where('category', 'MCCB')
                 ->where('poles', $circuit->poles)
-                ->where('rated_current_a', $circuit->current);
-        } else {
-            return null;
+                ->where('rated_current_a', $circuit->current)
+                ->get();
+        }
+        if ($circuit->deviceType === 'ДТЗ') {
+            $parsed = $this->residualRating($circuit->rating);
+            if ($parsed === null) {
+                return collect();
+            }
+            $query = EtiProduct::query()
+                ->whereIn('category', ['RCD', 'RCBO'])
+                ->where('poles', $parsed['poles'])
+                ->where('rated_current_a', $parsed['current'])
+                ->where('residual_current_a', $parsed['residual']);
+            if ($parsed['type'] !== null) {
+                $query->where('rcd_type', $parsed['type']);
+            }
+            if ($parsed['curve'] !== null) {
+                $query->where('trip_curve', $parsed['curve']);
+            }
+
+            return $query->get();
         }
 
-        $matches = $query->get();
+        return null;
+    }
 
-        return $matches->count() === 1 ? $matches->first() : null;
+    /**
+     * @return array{poles: int, current: float, residual: float, type: ?string, curve: ?string}|null
+     */
+    private function residualRating(string $rating): ?array
+    {
+        $rating = str_replace(['А', 'С', 'В'], ['A', 'C', 'B'], trim($rating));
+        if (preg_match('/^(\d+)A\/(\d+)P\/(\d+)mA(?:\s+([A-Z]+))?$/i', $rating, $match) === 1) {
+            return [
+                'poles' => (int) $match[2],
+                'current' => (float) $match[1],
+                'residual' => ((float) $match[3]) / 1000,
+                'type' => isset($match[4]) && $match[4] !== '' ? strtoupper($match[4]) : null,
+                'curve' => null,
+            ];
+        }
+        if (preg_match('/^C(\d+)A\/(\d+)\+N$/i', $rating, $match) === 1) {
+            return [
+                'poles' => (int) $match[2] + 1,
+                'current' => (float) $match[1],
+                'residual' => 0.03,
+                'type' => 'AC',
+                'curve' => 'C',
+            ];
+        }
+
+        return null;
     }
 
     /**

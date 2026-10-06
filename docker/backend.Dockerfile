@@ -16,7 +16,8 @@ RUN mkdir -p /var/www/eticad-seed \
     && rm -rf storage/app/eticad \
     && composer dump-autoload --optimize \
     && chown -R www-data:www-data storage bootstrap/cache \
-    && printf '\nclear_env = no\n' >> /usr/local/etc/php-fpm.d/zz-docker.conf
+    && printf '\nclear_env = no\n' >> /usr/local/etc/php-fpm.d/zz-docker.conf \
+    && printf 'upload_max_filesize=32M\npost_max_size=40M\n' > /usr/local/etc/php/conf.d/uploads.ini
 
 COPY docker/backend-entrypoint.sh /usr/local/bin/backend-entrypoint.sh
 RUN chmod +x /usr/local/bin/backend-entrypoint.sh

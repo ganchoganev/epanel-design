@@ -41,9 +41,15 @@ class PriceImportController extends Controller
             'header_row' => 'nullable|integer|min:1',
         ]);
 
-        return response()->json(
-            $this->service->preview($request->file('file'), $request->integer('header_row', 1))
-        );
+        try {
+            $preview = $this->service->preview($request->file('file'), $request->integer('header_row', 1));
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json(['message' => 'Файлът не можа да се прочете.'], 422);
+        }
+
+        return response()->json($preview);
     }
 
     public function import(Request $request)
@@ -56,11 +62,17 @@ class PriceImportController extends Controller
             'header_row' => 'nullable|integer|min:1',
         ]);
 
-        $result = $this->service->import(
-            $request->file('file'),
-            $data['column_mapping'],
-            $data['header_row'] ?? 1
-        );
+        try {
+            $result = $this->service->import(
+                $request->file('file'),
+                $data['column_mapping'],
+                $data['header_row'] ?? 1
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json(['message' => 'Цените не можаха да се запишат.'], 422);
+        }
 
         return response()->json($result);
     }

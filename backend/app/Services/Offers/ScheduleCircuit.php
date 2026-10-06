@@ -13,5 +13,6 @@ class ScheduleCircuit
         public readonly string $rating,
         public readonly float $pageX = 0,
         public readonly float $pageY = 0,
+        public readonly string $sourceFile = '',
     ) {}
 }

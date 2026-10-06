@@ -3,14 +3,42 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\CatalogSupplement;
 use App\Support\CatalogCode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CodeReplacementController extends Controller
 {
+    public function template(CatalogSupplement $supplement): BinaryFileResponse
+    {
+        $prepared = $supplement->preparedPath();
+        if ($prepared !== null) {
+            return response()->download($prepared, basename($prepared));
+        }
+
+        return response()->download($supplement->template(), 'novi-kodove.xlsx');
+    }
+
+    public function importSupplement(Request $request, CatalogSupplement $supplement): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls',
+        ]);
+
+        try {
+            $result = $supplement->import($request->file('file'));
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json($result);
+    }
+
     public function index(): JsonResponse
     {
         $rows = DB::connection('eticad')
