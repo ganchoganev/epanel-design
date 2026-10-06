@@ -21,7 +21,7 @@ class AutocadScheduleParser
         ));
 
         if ($devices === []) {
-            return [];
+            return $this->inlineCircuits($items, $page);
         }
 
         $tables = $this->tables($devices);
@@ -49,6 +49,104 @@ class AutocadScheduleParser
         }
 
         return $circuits;
+    }
+
+    /**
+     * A single-line diagram has no МАП/ПЛК labels. Each breaker is the rating
+     * itself: C/63A/1, 32A/1P, or 160A/3P/36kA.
+     *
+     * @param  list<array{x: float, y: float, px: float, py: float, t: string}>  $items
+     * @param  array{x0: float, y0: float, x1: float, y1: float, rotate: int}  $page
+     * @return list<ScheduleCircuit>
+     */
+    private function inlineCircuits(array $items, array $page): array
+    {
+        $devices = [];
+        foreach ($items as $item) {
+            $rating = $this->inlineRating($item['t']);
+            if ($rating === null) {
+                continue;
+            }
+            $devices[] = $item + $rating;
+        }
+        if ($devices === []) {
+            return [];
+        }
+
+        $board = $this->inlineBoardName($items);
+        $circuits = [];
+        foreach ($devices as $device) {
+            [$pageX, $pageY] = $this->viewportFractions($device['px'], $device['py'], $page);
+            $circuits[] = new ScheduleCircuit(
+                $board,
+                $device['type'],
+                $device['poles'],
+                $device['current'],
+                $device['curve'],
+                $device['label'],
+                $pageX,
+                $pageY,
+            );
+        }
+
+        return $circuits;
+    }
+
+    /** @return array{type: string, poles: int, current: float, curve: ?string, label: string}|null */
+    private function inlineRating(string $text): ?array
+    {
+        $text = str_replace(['А', 'С', 'В'], ['A', 'C', 'B'], trim($text));
+        if (preg_match('/^([A-Z])\/(\d+(?:[.,]\d+)?)A\/(\d+)$/u', $text, $match) === 1) {
+            $current = (float) str_replace(',', '.', $match[2]);
+            $poles = (int) $match[3];
+
+            return [
+                'type' => 'МАП',
+                'poles' => $poles,
+                'current' => $current,
+                'curve' => $match[1],
+                'label' => $current.'A/'.$poles.'P/'.$match[1],
+            ];
+        }
+        if (preg_match('/^(\d+(?:[.,]\d+)?)A\/(\d+)P\/(\d+(?:[.,]\d+)?)kA$/ui', $text, $match) === 1) {
+            $current = (float) str_replace(',', '.', $match[1]);
+            $poles = (int) $match[2];
+
+            return [
+                'type' => 'ПЛК',
+                'poles' => $poles,
+                'current' => $current,
+                'curve' => null,
+                'label' => $current.'A/'.$poles.'P',
+            ];
+        }
+        if (preg_match('/^(\d+(?:[.,]\d+)?)A\/(\d+)P(?:\/([A-Z]))?$/u', $text, $match) === 1) {
+            $current = (float) str_replace(',', '.', $match[1]);
+            $poles = (int) $match[2];
+            $curve = $match[3] ?? null;
+
+            return [
+                'type' => 'МАП',
+                'poles' => $poles,
+                'current' => $current,
+                'curve' => $curve !== null && $curve !== '' ? $curve : null,
+                'label' => $current.'A/'.$poles.'P'.($curve ? '/'.$curve : ''),
+            ];
+        }
+
+        return null;
+    }
+
+    /** @param  list<array{t: string}>  $items */
+    private function inlineBoardName(array $items): string
+    {
+        foreach ($items as $item) {
+            if (preg_match('/(?:^|[\s\-])ГЕТ(?:$|[\s\-])/u', $item['t']) === 1) {
+                return 'ГЕТ';
+            }
+        }
+
+        return 'Табло';
     }
 
     /**
@@ -90,7 +188,7 @@ class AutocadScheduleParser
         $stack = [];
         foreach ($this->pageStreams($raw) as $decoded) {
             if (! preg_match_all(
-                '/\/F(\d+)\s+[0-9.]+\s+Tf|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+Tm|<([0-9A-Fa-f]+)>\s*Tj|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+cm|(?:^|\s)(q|Q)(?=\s)/',
+                '/\/F(\d+)\s+[0-9.]+\s+Tf|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+Tm|<([0-9A-Fa-f]+)>\s*Tj|\(((?:\\\\.|[^\\\\)])*)\)\s*Tj|([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+([0-9.\-]+)\s+cm|(?:^|\s)(q|Q)(?=\s)/',
                 $decoded,
                 $ops,
                 PREG_SET_ORDER
@@ -98,18 +196,18 @@ class AutocadScheduleParser
                 continue;
             }
             foreach ($ops as $op) {
-                if (($op[15] ?? '') === 'q') {
+                if (($op[16] ?? '') === 'q') {
                     $stack[] = $ctm;
                     continue;
                 }
-                if (($op[15] ?? '') === 'Q') {
+                if (($op[16] ?? '') === 'Q') {
                     $ctm = array_pop($stack) ?? $ctm;
                     continue;
                 }
-                if (($op[9] ?? '') !== '') {
+                if (($op[10] ?? '') !== '') {
                     $ctm = $this->concatMatrix([
-                        (float) $op[9], (float) $op[10], (float) $op[11],
-                        (float) $op[12], (float) $op[13], (float) $op[14],
+                        (float) $op[10], (float) $op[11], (float) $op[12],
+                        (float) $op[13], (float) $op[14], (float) $op[15],
                     ], $ctm);
                     continue;
                 }
@@ -122,10 +220,13 @@ class AutocadScheduleParser
                     $y = (float) $op[7];
                     continue;
                 }
-                if ($op[8] === '') {
+                $literal = $op[9] ?? '';
+                if ($op[8] === '' && $literal === '') {
                     continue;
                 }
-                $text = $this->decodeHex(strtoupper($op[8]), $cmaps[max(0, $font - 1)] ?? []);
+                $text = $literal !== ''
+                    ? trim($this->unescapePdf($literal))
+                    : $this->decodeHex(strtoupper($op[8]), $cmaps[max(0, $font - 1)] ?? []);
                 if ($text !== '') {
                     [$px, $py] = $this->applyMatrix($x, $y, $ctm);
                     $items[] = ['x' => $x, 'y' => $y, 'px' => $px, 'py' => $py, 't' => $text];
@@ -195,6 +296,23 @@ class AutocadScheduleParser
         }
 
         return trim($text);
+    }
+
+    private function unescapePdf(string $value): string
+    {
+        $text = preg_replace_callback('/\\\\([nrtbf()\/\\\\]|[0-7]{1,3})/', function (array $match): string {
+            return match ($match[1]) {
+                'n' => "\n",
+                'r' => "\r",
+                't' => "\t",
+                'b' => "\x08",
+                'f' => "\f",
+                '(', ')', '\\', '/' => $match[1] === '/' ? '/' : $match[1],
+                default => chr(octdec($match[1])),
+            };
+        }, $value);
+
+        return is_string($text) ? $text : $value;
     }
 
     /** @return array{x0: float, y0: float, x1: float, y1: float, rotate: int} */

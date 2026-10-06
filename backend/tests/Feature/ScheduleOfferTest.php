@@ -99,6 +99,24 @@ class ScheduleOfferTest extends TestCase
         ], $diff);
     }
 
+    public function test_single_line_diagram_reads_rating_text_as_breakers(): void
+    {
+        $path = dirname(base_path()).DIRECTORY_SEPARATOR.'test'.DIRECTORY_SEPARATOR.'E-023.pdf';
+        if (! is_file($path)) {
+            $this->markTestSkipped('E-023.pdf is not in test/.');
+        }
+
+        $this->seed(EtiCatalogSeeder::class);
+        $draft = app(ScheduleOfferMapper::class)->map(
+            app(AutocadScheduleParser::class)->parse($path)
+        );
+        $quantities = $this->quantities($draft);
+
+        $this->assertSame(5, $quantities['ГЕТ']['001900036'] ?? 0);
+        $this->assertSame(4, $quantities['ГЕТ']['001900030'] ?? 0);
+        $this->assertNotEmpty($draft->unmatched);
+    }
+
     public function test_workbook_fills_table_sheet_and_keeps_summary_formulas(): void
     {
         $this->seed(EtiCatalogSeeder::class);
