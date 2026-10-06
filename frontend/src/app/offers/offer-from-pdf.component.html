@@ -68,6 +68,7 @@
           <span>{{ zoomLabel(page.title) }}</span>
           <button type="button" (click)="zoomBy(page.title, 1.25)" [disabled]="zoomOf(page.title) >= 5">+</button>
           <button type="button" (click)="resetZoom(page.title)">Вмести</button>
+          <span class="zoomhint">Ctrl + колелце</span>
         </div>
         <div
           class="viewport"

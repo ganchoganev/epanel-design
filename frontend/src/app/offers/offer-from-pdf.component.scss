@@ -229,6 +229,14 @@ button:disabled {
   color: #37474f;
 }
 
+.zoomhint {
+  min-width: 0;
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #78909c;
+}
+
 .viewport {
   overflow: auto;
   max-height: calc(100dvh - 220px);

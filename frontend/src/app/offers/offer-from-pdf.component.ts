@@ -12,6 +12,15 @@ export class ZoomWheelDirective {
 
   constructor(element: ElementRef<HTMLElement>) {
     element.nativeElement.addEventListener('wheel', (event: WheelEvent) => {
+      if (!event.ctrlKey) {
+        const page = element.nativeElement.closest('app-offer-from-pdf');
+        if (page instanceof HTMLElement) {
+          page.scrollTop += event.deltaY;
+          page.scrollLeft += event.deltaX;
+        }
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
       this.zoomWheel.emit(event);
     }, { passive: false });
@@ -343,6 +352,7 @@ export class OfferFromPdfComponent {
   }
 
   onWheel(event: WheelEvent, title: string): void {
+    if (!event.ctrlKey) return;
     const viewport = event.currentTarget as HTMLElement;
     const old = this.zoomOf(title);
     const next = this.clampZoom(old * (event.deltaY < 0 ? 1.15 : 1 / 1.15));
