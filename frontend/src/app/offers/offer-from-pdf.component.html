@@ -50,105 +50,162 @@
   }
 
   @if (offer(); as result) {
-    <p class="tally">
-      Прочетени {{ tally().read }}. Със код на ETI {{ tally().coded }}. Без код {{ tally().open }}.
-    </p>
     @if (drawing()) {
       <p class="hint">Схемата се чертае. Точките се слагат върху прочетените редове.</p>
     }
-    @for (page of previews(); track page.title) {
-      <section class="preview">
-        <h2>{{ page.title }}</h2>
-        <p class="key">
-          <span><i class="swatch ok"></i> със код</span>
-          <span><i class="swatch miss"></i> без код</span>
-        </p>
-        <div class="zoombar">
-          <button type="button" (click)="zoomBy(page.title, 1 / 1.25)" [disabled]="zoomOf(page.title) <= 1">−</button>
-          <span>{{ zoomLabel(page.title) }}</span>
-          <button type="button" (click)="zoomBy(page.title, 1.25)" [disabled]="zoomOf(page.title) >= 5">+</button>
-          <button type="button" (click)="resetZoom(page.title)">Вмести</button>
-          <span class="zoomhint">Ctrl + колелце</span>
-        </div>
-        <div
-          class="viewport"
-          [attr.data-sheet]="page.id"
-          [class.can-pan]="zoomOf(page.title) > 1"
-          zoomWheel
-          (zoomWheel)="onWheel($event, page.title)"
-          (scroll)="onSheetScroll(page.title)"
-          (pointerdown)="onPanStart($event, page.title)"
-          (pointermove)="onPanMove($event)"
-          (pointerup)="onPanEnd($event)"
-          (pointercancel)="onPanEnd($event)"
-        >
-          <div class="sheet" [style.width.%]="zoomOf(page.title) * 100" [style.aspect-ratio]="page.aspect">
-            <canvas class="base" [attr.data-base]="page.id"></canvas>
-            <canvas class="sharp" [attr.data-sharp]="page.id"></canvas>
-            @for (mark of marksOn(page.title); track mark.key) {
-              <span
-                class="mark"
-                [class.ok]="mark.ok"
-                [class.miss]="!mark.ok"
-                [style.left.%]="mark.x"
-                [style.top.%]="mark.y"
-                [title]="mark.label"
-              ></span>
+    <div class="tabs" role="tablist">
+      @for (file of sheetFiles(); track file) {
+        <button
+          type="button"
+          role="tab"
+          class="tab"
+          [class.active]="activeFile() === file"
+          [class.complete]="!fileOpen(file)"
+          [class.incomplete]="fileOpen(file)"
+          [attr.aria-selected]="activeFile() === file"
+          (click)="selectFile(file)"
+        >{{ file }}</button>
+      }
+    </div>
+    @for (file of sheetFiles(); track file) {
+      <div class="tabpanel" [class.hidden]="activeFile() !== file">
+        @for (page of pagesOf(file); track page.title) {
+          <section class="preview">
+            <h2>{{ page.title }}</h2>
+            <p class="key">
+              <span><i class="swatch ok"></i> със код</span>
+              <span><i class="swatch miss"></i> без код</span>
+            </p>
+            <div class="zoombar">
+              <button type="button" (click)="zoomBy(page.title, 1 / 1.25)" [disabled]="zoomOf(page.title) <= 1">−</button>
+              <span>{{ zoomLabel(page.title) }}</span>
+              <button type="button" (click)="zoomBy(page.title, 1.25)" [disabled]="zoomOf(page.title) >= 5">+</button>
+              <button type="button" (click)="resetZoom(page.title)">Вмести</button>
+              <span class="zoomhint">Ctrl + колелце</span>
+            </div>
+            <div
+              class="viewport"
+              [attr.data-sheet]="page.id"
+              [class.can-pan]="zoomOf(page.title) > 1"
+              zoomWheel
+              (zoomWheel)="onWheel($event, page.title)"
+              (scroll)="onSheetScroll(page.title)"
+              (pointerdown)="onPanStart($event, page.title)"
+              (pointermove)="onPanMove($event)"
+              (pointerup)="onPanEnd($event)"
+              (pointercancel)="onPanEnd($event)"
+            >
+              <div class="sheet" [style.width.%]="zoomOf(page.title) * 100" [style.aspect-ratio]="page.aspect">
+                <canvas class="base" [attr.data-base]="page.id"></canvas>
+                <canvas class="sharp" [attr.data-sharp]="page.id"></canvas>
+                @for (mark of marksOn(page.title); track mark.key) {
+                  <span
+                    class="mark"
+                    [class.ok]="mark.ok"
+                    [class.miss]="!mark.ok"
+                    [style.left.%]="mark.x"
+                    [style.top.%]="mark.y"
+                    [title]="mark.label"
+                  ></span>
+                }
+              </div>
+            </div>
+          </section>
+        }
+        <section class="scope this-file">
+          <h2>Тази схема</h2>
+          <p class="scope-label">{{ file }}</p>
+          <p class="tally">
+            Прочетени {{ fileTally(file).read }}. Със код {{ fileTally(file).coded }}. Без код {{ fileTally(file).open }}.
+          </p>
+        @if (fileUnread(file).length) {
+          <h3>Без код на ETI</h3>
+          <p class="gap">Надписът е от тази схема. Въведи код от каталога. Записът важи и за следващо четене.</p>
+          <table class="types">
+            <thead>
+              <tr>
+                <th>Табло</th>
+                <th>Надпис</th>
+                <th>Брой</th>
+                <th>Код на ETI</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of fileUnread(file); track $index) {
+                <tr class="missing">
+                  <td>{{ row.board }}</td>
+                  <td>{{ row.text }}</td>
+                  <td>{{ row.quantity }}</td>
+                  <td>
+                    <input placeholder="въведи код" #unreadCode />
+                    <button type="button" (click)="rememberUnread(row, unreadCode.value)">Запиши</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+        <h3>Кодове по тип</h3>
+        <p class="lead">Само редовете от тази схема. Записът сменя кода на този тип.</p>
+        <table class="types">
+          <thead>
+            <tr>
+              <th>Табло</th>
+              <th>Тип</th>
+              <th>Брой</th>
+              <th>Код на ETI</th>
+              <th>Наименование</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (group of fileGroups(file); track group.key) {
+              <tr [class.missing]="!group.catalog_number">
+                <td>{{ group.board }}</td>
+                <td>{{ group.device_type }} {{ group.rating }}</td>
+                <td>{{ group.quantity }}</td>
+                <td>
+                  <input [value]="group.catalog_number ?? ''" [placeholder]="group.catalog_number ? '' : 'въведи код'" #fileCode />
+                  <button type="button" (click)="applyGroup(group, fileCode.value)">Запиши</button>
+                </td>
+                <td>{{ group.catalog_number ? group.name : (group.reason || 'Без код — въведи преди офертата') }}</td>
+              </tr>
             }
-          </div>
-        </div>
-      </section>
+          </tbody>
+        </table>
+        @for (board of fileBoards(file); track board.name) {
+          <h3>{{ board.name }}</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Код</th>
+                <th>Наименование</th>
+                <th>К-во</th>
+                <th>Ед. цена</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (line of board.lines; track line.catalog_number) {
+                <tr>
+                  <td>{{ line.catalog_number }}</td>
+                  <td>{{ line.name }}</td>
+                  <td>{{ line.quantity }}</td>
+                  <td>{{ line.unit_price ?? '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+        </section>
+      </div>
     }
-    @if (result.unread.length) {
-      <h2>От таблицата, без код на ETI</h2>
-      <p class="gap">Тези редове са в таблицата на схемата. Не са автоматичен прекъсвач и затова няма изделие на ETI.</p>
-      <table class="types">
-        <thead>
-          <tr>
-            <th>Табло</th>
-            <th>Надпис</th>
-            <th>Брой</th>
-            <th>Защо</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (row of result.unread; track $index) {
-            <tr class="missing">
-              <td>{{ row.board }}</td>
-              <td>{{ row.text }}</td>
-              <td>{{ row.quantity }}</td>
-              <td>{{ row.reason }}</td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    }
-    @if (result.unmatched.length) {
-      <h2>Прочетено, без код на ETI</h2>
-      <p class="gap">Номиналът е прочетен. В каталога няма точно едно изделие на ETI за него.</p>
-      <table class="types">
-        <thead>
-          <tr>
-            <th>Табло</th>
-            <th>Тип</th>
-            <th>Брой</th>
-            <th>Защо няма код</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (row of result.unmatched; track row.board + row.device_type + row.rating) {
-            <tr class="missing">
-              <td>{{ row.board }}</td>
-              <td>{{ row.device_type }} {{ row.rating }}</td>
-              <td>{{ row.quantity }}</td>
-              <td>{{ row.reason }}</td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    }
-    <h2>Кодове по тип</h2>
-    <p class="lead">Записът сменя кода на всички бройки от този тип.</p>
+    <section class="scope all-files">
+    <h2>Всички файлове</h2>
+    <p class="scope-label">Общ сбор от прочетените схеми. Не се сменя с таба.</p>
+    <p class="tally">
+      Прочетени {{ tally().read }}. Със код на ETI {{ tally().coded }}. Без код {{ tally().open }}.
+    </p>
+    <h3>Кодове по тип</h3>
+    <p class="lead">Всички схеми заедно. Записът сменя кода на всички бройки от този тип.</p>
     <table class="types">
       <thead>
         <tr>
@@ -182,7 +239,7 @@
     }
     <p class="note">{{ result.note }}</p>
     @for (board of result.boards; track board.name) {
-      <h2>{{ board.name }}</h2>
+      <h3>{{ board.name }}</h3>
       <table>
         <thead>
           <tr>
@@ -204,5 +261,6 @@
         </tbody>
       </table>
     }
+    </section>
   }
 </div>

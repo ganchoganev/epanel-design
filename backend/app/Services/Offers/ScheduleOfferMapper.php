@@ -29,11 +29,11 @@ class ScheduleOfferMapper
         $unmatched = [];
 
         foreach ($circuits as $circuit) {
-            $saved = ScheduleMap::query()
-                ->where('signature', ScheduleMap::signature($circuit->rating))
-                ->first();
-            $product = $saved instanceof ScheduleMap ? null : $this->match($circuit);
-            if (! $saved instanceof ScheduleMap && ! $product instanceof EtiProduct) {
+            $product = $this->match($circuit);
+            $saved = $product instanceof EtiProduct
+                ? null
+                : ScheduleMap::query()->where('signature', ScheduleMap::signature($circuit->rating))->first();
+            if (! $product instanceof EtiProduct && ! $saved instanceof ScheduleMap) {
                 $key = $circuit->board.'|'.$circuit->deviceType.'|'.$circuit->rating;
                 if (! isset($unmatched[$key])) {
                 $unmatched[$key] = [
@@ -49,7 +49,11 @@ class ScheduleOfferMapper
                 continue;
             }
 
-            if ($saved instanceof ScheduleMap) {
+            if ($product instanceof EtiProduct) {
+                $code = $product->catalog_number;
+                $name = $product->name;
+                $price = $product->price !== null ? (float) $product->price : null;
+            } elseif ($saved instanceof ScheduleMap) {
                 $code = $saved->catalog_number;
                 $name = $saved->name;
                 $price = $saved->unit_price !== null ? (float) $saved->unit_price : null;
@@ -60,12 +64,8 @@ class ScheduleOfferMapper
                         $price = (float) $catalog->price;
                     }
                 }
-            } else {
-                $code = $product->catalog_number;
-                $name = $product->name;
-                $price = $product->price !== null ? (float) $product->price : null;
             }
-            if ($saved === null && isset($replacements[$code])) {
+            if ($product instanceof EtiProduct && isset($replacements[$code])) {
                 $code = $replacements[$code];
                 $replacement = EtiProduct::query()->where('catalog_number', $code)->first();
                 if ($replacement instanceof EtiProduct) {
@@ -105,14 +105,28 @@ class ScheduleOfferMapper
         }
 
         $offerBoards = [];
+        $copies = [];
+        $modules = [];
+        foreach ($circuits as $circuit) {
+            $copies[$circuit->board] = max($copies[$circuit->board] ?? 1, $circuit->copies);
+            if ($circuit->poles >= 1) {
+                $modules[$circuit->board] = ($modules[$circuit->board] ?? 0) + $circuit->poles;
+            }
+        }
         foreach ($this->orderedBoardNames(array_keys($boards)) as $name) {
             $rows = $boards[$name];
             uasort($rows, fn (array $a, array $b) => $a['sort'] <=> $b['sort']);
-            $offerBoards[] = new OfferBoard(
-                $name,
-                1,
-                array_map(fn (array $row) => $row['line'], array_values($rows)),
-            );
+            $lines = array_map(fn (array $row) => $row['line'], array_values($rows));
+            $box = $this->enclosure($modules[$name] ?? 0);
+            if ($box instanceof EtiProduct) {
+                $lines[] = new OfferLine(
+                    $box->catalog_number,
+                    $box->name,
+                    1,
+                    $box->price !== null ? (float) $box->price : null,
+                );
+            }
+            $offerBoards[] = new OfferBoard($name, $copies[$name] ?? 1, $lines);
         }
 
         return new OfferDraft($offerBoards, array_values($unmatched), self::SWITCH_NOTE, $placements);
@@ -281,13 +295,54 @@ class ScheduleOfferMapper
      */
     private function orderedBoardNames(array $names): array
     {
-        usort($names, function (string $a, string $b): int {
-            $sectionA = preg_match('/(\d+)\)?$/u', $a, $matchA) ? (int) $matchA[1] : 999;
-            $sectionB = preg_match('/(\d+)\)?$/u', $b, $matchB) ? (int) $matchB[1] : 999;
+        $single = 0;
+        foreach ($names as $name) {
+            if (preg_match('/^[A-Za-zА-Яа-я]{1,4}\s*\d+$/u', $name) === 1) {
+                $single++;
+            }
+        }
+        if ($single === count($names)) {
+            usort($names, function (string $a, string $b): int {
+                $sectionA = preg_match('/(\d+)$/u', $a, $matchA) ? (int) $matchA[1] : 999;
+                $sectionB = preg_match('/(\d+)$/u', $b, $matchB) ? (int) $matchB[1] : 999;
 
-            return $sectionA <=> $sectionB ?: strcmp($a, $b);
-        });
+                return $sectionA <=> $sectionB ?: strcmp($a, $b);
+            });
+        }
 
-        return $names;
+        return array_values($names);
+    }
+
+    /**
+     * The drawing does not name the box. The smallest surface DIDO with a transparent door
+     * that fits the modules is used only when that size exists once.
+     */
+    private function enclosure(int $modules): ?EtiProduct
+    {
+        if ($modules < 1) {
+            return null;
+        }
+        $fits = [];
+        $rows = EtiProduct::query()
+            ->where('category', 'Enclosure')
+            ->where('name', 'like', 'DIDO-E Табло СМ - прозрачна врата ECM%PT')
+            ->get();
+        foreach ($rows as $row) {
+            if (preg_match('/ECM(\d+)PT$/u', (string) $row->name, $match) !== 1) {
+                continue;
+            }
+            $size = (int) $match[1];
+            if ($size < $modules) {
+                continue;
+            }
+            $fits[$size][] = $row;
+        }
+        if ($fits === []) {
+            return null;
+        }
+        ksort($fits);
+        $smallest = $fits[array_key_first($fits)];
+
+        return count($smallest) === 1 ? $smallest[0] : null;
     }
 }

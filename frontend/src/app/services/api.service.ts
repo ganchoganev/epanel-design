@@ -122,6 +122,13 @@ export class ApiService {
     return this.http.post(`${this.base}/offers/from-schedule/xlsx`, form, { responseType: 'blob' });
   }
 
+  rememberSchedule(text: string, catalogNumber: string): Observable<{ catalog_number: string; name: string; unit_price: number | null }> {
+    return this.http.post<{ catalog_number: string; name: string; unit_price: number | null }>(`${this.base}/offers/remember`, {
+      text,
+      catalog_number: catalogNumber,
+    });
+  }
+
   downloadScheduleDraft(offer: ScheduleOffer): Observable<Blob> {
     return this.http.post(`${this.base}/offers/draft/xlsx`, {
       boards: offer.boards,

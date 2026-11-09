@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\EtiProduct;
+use App\Models\ScheduleMap;
 use App\Services\Offers\OfferBoard;
 use App\Services\Offers\OfferDraft;
 use App\Services\Offers\OfferLine;
@@ -41,6 +43,32 @@ class ScheduleOfferController extends Controller
         }
 
         return response()->json($draft->toArray());
+    }
+
+    public function remember(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'text' => ['required', 'string', 'max:200'],
+            'catalog_number' => ['required', 'string', 'max:32'],
+        ]);
+        $product = EtiProduct::query()->where('catalog_number', $data['catalog_number'])->first();
+        $name = $product instanceof EtiProduct ? $product->name : $data['catalog_number'];
+        $price = $product instanceof EtiProduct && $product->price !== null ? (float) $product->price : null;
+        ScheduleMap::query()->updateOrCreate(
+            ['signature' => ScheduleMap::signature($data['text'])],
+            [
+                'catalog_number' => $data['catalog_number'],
+                'name' => $name,
+                'unit_price' => $price,
+                'source' => 'manual',
+            ],
+        );
+
+        return response()->json([
+            'catalog_number' => $data['catalog_number'],
+            'name' => $name,
+            'unit_price' => $price,
+        ]);
     }
 
     public function download(Request $request): BinaryFileResponse

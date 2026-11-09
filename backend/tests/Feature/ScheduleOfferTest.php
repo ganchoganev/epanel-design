@@ -250,7 +250,7 @@ class ScheduleOfferTest extends TestCase
         ]);
 
         $this->assertSame([], $draft->unmatched);
-        $this->assertSame(1, $this->quantities($draft)['T1']['002062123'] ?? 0);
+        $this->assertSame(1, $this->quantities($draft)['T1']['002061112'] ?? 0);
         $this->assertSame(1, $this->quantities($draft)['T1']['002173124'] ?? 0);
         $this->assertSame(1, $this->quantities($draft)['ТО']['004600080'] ?? 0);
     }

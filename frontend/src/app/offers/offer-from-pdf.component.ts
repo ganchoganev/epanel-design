@@ -87,6 +87,7 @@ export class OfferFromPdfComponent {
   readonly offer = signal<ScheduleOffer | null>(null);
   readonly codeHint = signal('');
   readonly files = signal<File[]>([]);
+  readonly activeFile = signal('');
   readonly previews = signal<SheetPreview[]>([]);
   readonly zooms = signal<Record<string, number>>({});
   private loaded = new Map<string, { pdf: PdfDocument; pageNumber: number }>();
@@ -100,6 +101,7 @@ export class OfferFromPdfComponent {
   constructor() {
     const onResize = () => {
       for (const page of this.previews()) {
+        if (!this.pageIsActive(page.title)) continue;
         this.softenSharp(page.id, page.title);
         this.sharpRegion.delete(page.title);
         this.scheduleSharp(page.title);
@@ -116,6 +118,7 @@ export class OfferFromPdfComponent {
     const input = event.target as HTMLInputElement;
     this.files.set(input.files ? [...input.files] : []);
     this.previews.set([]);
+    this.activeFile.set('');
     this.zooms.set({});
     this.offer.set(null);
     void this.closeDocuments();
@@ -327,6 +330,99 @@ export class OfferFromPdfComponent {
     return null;
   }
 
+  sheetFiles(): string[] {
+    const names: string[] = [];
+    for (const page of this.previews()) {
+      const file = this.fileOf(page.title);
+      if (!names.includes(file)) names.push(file);
+    }
+    return names;
+  }
+
+  pagesOf(file: string): SheetPreview[] {
+    return this.previews().filter((page) => this.fileOf(page.title) === file);
+  }
+
+  selectFile(file: string): void {
+    if (this.activeFile() === file) return;
+    this.activeFile.set(file);
+    void this.paintFile(file);
+  }
+
+  fileOpen(file: string): boolean {
+    return this.fileTally(file).open > 0;
+  }
+
+  fileTally(file: string): { read: number; coded: number; open: number } {
+    const offer = this.offer();
+    if (!offer) return { read: 0, coded: 0, open: 0 };
+    const placements = offer.placements.filter((mark) => (mark.file ?? '') === file);
+    const unread = offer.unread.filter((row) => (row.file ?? '') === file);
+    const coded = placements.filter((mark) => mark.catalog_number).length;
+    return { read: placements.length + unread.length, coded, open: placements.length - coded + unread.length };
+  }
+
+  fileUnread(file: string): ScheduleOffer['unread'] {
+    return (this.offer()?.unread ?? []).filter((row) => (row.file ?? '') === file);
+  }
+
+  fileGroups(file: string): TypeGroup[] {
+    const offer = this.offer();
+    if (!offer) return [];
+    const map = new Map<string, TypeGroup>();
+    for (const mark of offer.placements) {
+      if ((mark.file ?? '') !== file) continue;
+      const key = `${mark.board}|${mark.device_type}|${mark.rating}`;
+      const group = map.get(key);
+      if (!group) {
+        map.set(key, {
+          key,
+          board: mark.board,
+          device_type: mark.device_type,
+          rating: mark.rating,
+          quantity: 1,
+          catalog_number: mark.catalog_number,
+          name: mark.name,
+          reason: this.reasonFor(offer, mark.board, mark.device_type, mark.rating),
+        });
+        continue;
+      }
+      group.quantity++;
+      if (group.catalog_number !== mark.catalog_number) {
+        group.catalog_number = null;
+        group.name = null;
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      if (!a.catalog_number !== !b.catalog_number) return a.catalog_number ? 1 : -1;
+      return a.board.localeCompare(b.board, 'bg') || a.rating.localeCompare(b.rating, 'bg');
+    });
+  }
+
+  fileBoards(file: string): ScheduleOffer['boards'] {
+    const boards: ScheduleOffer['boards'] = [];
+    for (const mark of this.offer()?.placements ?? []) {
+      if ((mark.file ?? '') !== file || !mark.catalog_number) continue;
+      let board = boards.find((item) => item.name === mark.board);
+      if (!board) {
+        board = { name: mark.board, quantity: 1, lines: [] };
+        boards.push(board);
+      }
+      const line = board.lines.find((item) => item.catalog_number === mark.catalog_number);
+      if (line) {
+        line.quantity++;
+      } else {
+        board.lines.push({
+          catalog_number: mark.catalog_number,
+          name: mark.name ?? mark.catalog_number,
+          quantity: 1,
+          unit_price: mark.unit_price,
+        });
+      }
+    }
+    return boards;
+  }
+
   tally(): { read: number; coded: number; open: number } {
     const offer = this.offer();
     if (!offer) return { read: 0, coded: 0, open: 0 };
@@ -423,10 +519,26 @@ export class OfferFromPdfComponent {
     return Math.min(5, Math.max(1, Math.round(value * 100) / 100));
   }
 
+  private fileOf(title: string): string {
+    return title.replace(/,\s*страница\s+\d+$/, '');
+  }
+
+  private pageIsActive(title: string): boolean {
+    return this.fileOf(title) === this.activeFile();
+  }
+
+  private async paintFile(file: string): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (const page of this.pagesOf(file)) {
+      await this.runPaint(page.title, () => this.paintBase(page));
+      await this.runPaint(page.title, () => this.paintSharp(page.title));
+    }
+  }
+
   marksOn(title: string): Array<{ key: string; x: number; y: number; ok: boolean; label: string }> {
     const offer = this.offer();
     if (!offer || /,\s*страница\s+(?!1\b)\d+/.test(title)) return [];
-    const file = title.replace(/,\s*страница\s+\d+$/, '');
+    const file = this.fileOf(title);
     const marks: Array<{ key: string; x: number; y: number; ok: boolean; label: string }> = [];
     for (const mark of offer.placements) {
       if ((mark.file ?? '') !== file || (mark.x <= 0 && mark.y <= 0)) continue;
@@ -496,11 +608,53 @@ export class OfferFromPdfComponent {
         const price = exact?.price === null || exact?.price === undefined ? null : Number(exact.price);
         const name = exact?.name ?? code;
         this.writeGroup(current, group, code, name, price);
-        this.codeHint.set(exact
-          ? `${name} — записан за ${group.quantity} бр.`
-          : 'Кодът е записан за целия тип. Няма го в каталога с цени.');
+        this.api.rememberSchedule(group.rating, code).subscribe({
+          next: (saved) => {
+            this.writeGroup(this.offer() ?? current, group, saved.catalog_number, saved.name, saved.unit_price);
+            this.codeHint.set(`${saved.name} — запомнен за следващо четене.`);
+          },
+          error: () => this.codeHint.set(exact
+            ? `${name} — записан за ${group.quantity} бр.`
+            : 'Кодът е записан за целия тип. Няма го в каталога с цени.'),
+        });
       },
       error: () => this.codeHint.set('Каталогът не отговори. Кодът не е сменен.'),
+    });
+  }
+
+  rememberUnread(row: ScheduleOffer['unread'][number], raw: string): void {
+    const code = raw.trim();
+    const current = this.offer();
+    if (!current || code === '') return;
+    this.api.rememberSchedule(row.text, code).subscribe({
+      next: (saved) => {
+        const boards = current.boards.map((board) => ({ ...board, lines: [...board.lines] }));
+        let board = boards.find((item) => item.name === row.board);
+        if (!board) {
+          board = { name: row.board, quantity: 1, lines: [] };
+          boards.push(board);
+        }
+        const line = board.lines.find((item) => item.catalog_number === saved.catalog_number);
+        if (line) {
+          line.quantity += row.quantity;
+        } else {
+          board.lines.push({
+            catalog_number: saved.catalog_number,
+            name: saved.name,
+            quantity: row.quantity,
+            unit_price: saved.unit_price,
+          });
+        }
+        const next = {
+          ...current,
+          boards,
+          unread: current.unread.filter((item) => item.text !== row.text || item.board !== row.board),
+        };
+        this.drafts.save(next);
+        this.offer.set(next);
+        this.codeHint.set(`${saved.name} — запомнен за следващо четене.`);
+      },
+      error: () => this.codeHint.set('Кодът не се записа.'),
     });
   }
 
@@ -604,12 +758,10 @@ export class OfferFromPdfComponent {
           pages.push({ id: id++, title, aspect: unit.width / unit.height });
         }
       }
+      const first = pages.length ? this.fileOf(pages[0].title) : '';
+      this.activeFile.set(first);
       this.previews.set(pages);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      for (const page of pages) {
-        await this.runPaint(page.title, () => this.paintBase(page));
-        await this.runPaint(page.title, () => this.paintSharp(page.title));
-      }
+      if (first) await this.paintFile(first);
     } catch {
       this.error.set('Схемата не можа да се начертае, но кодовете в таблицата са прочетени.');
     } finally {

@@ -53,6 +53,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/projects/{project}/export/excel', [ProjectController::class, 'exportExcel']);
 
         Route::post('/offers/from-schedule', [ScheduleOfferController::class, 'preview']);
+        Route::post('/offers/remember', [ScheduleOfferController::class, 'remember']);
         Route::post('/offers/from-schedule/xlsx', [ScheduleOfferController::class, 'download']);
         Route::post('/offers/draft/xlsx', [ScheduleOfferController::class, 'downloadDraft']);
 

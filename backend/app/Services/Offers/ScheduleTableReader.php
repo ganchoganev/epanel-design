@@ -93,7 +93,12 @@ class ScheduleTableReader
             $rows[] = $this->row($rating, $this->board($items, $rating), $path);
         }
 
-        return $this->numbered($rows);
+        $numbered = $this->numbered($rows);
+        if ($numbered !== []) {
+            return $numbered;
+        }
+
+        return $this->numbered($this->symbolStamps($items, $path));
     }
 
     /**
@@ -372,6 +377,8 @@ class ScheduleTableReader
         if (preg_match('/^T5$|^Т5$/u', $text) === 1) {
             return 'T5';
         }
+        $text = str_replace([';', ';', '­'], ',', $text);
+        $text = strtr($text, ['T' => 'Т', 'A' => 'А', 'O' => 'О', 'B' => 'В']);
         if ($text === 'АБ' || $text === 'ТАБ') {
             return 'ТАБ';
         }
@@ -426,5 +433,378 @@ class ScheduleTableReader
             'curve' => $curve,
             'role' => $role,
         ];
+    }
+
+    /**
+     * Single-line sheets write the rating as separate words (C, 1P, 16A) next to the symbol.
+     * Identical drawings collapse into one board whose quantity is the number of copies.
+     *
+     * @param  list<array{x: float, y: float, px?: float, py?: float, t: string}>  $items
+     * @return list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float, copies: int}>
+     */
+    private function symbolStamps(array $items, string $path): array
+    {
+        $fragments = [];
+        foreach ($items as $item) {
+            $role = $this->stampRole($item['t']);
+            if ($role === null) {
+                continue;
+            }
+            $fragments[] = $item + ['role' => $role];
+        }
+        if (count($fragments) < 2) {
+            return [];
+        }
+
+        $parent = range(0, count($fragments) - 1);
+        $find = function (int $index) use (&$parent, &$find): int {
+            if ($parent[$index] !== $index) {
+                $parent[$index] = $find($parent[$index]);
+            }
+
+            return $parent[$index];
+        };
+        $roles = array_map(fn (array $fragment) => [$fragment['role'] => true], $fragments);
+        $count = count($fragments);
+        for ($left = 0; $left < $count; $left++) {
+            for ($right = $left + 1; $right < $count; $right++) {
+                $rootLeft = $find($left);
+                $rootRight = $find($right);
+                if ($rootLeft === $rootRight) {
+                    continue;
+                }
+                $dx = abs($fragments[$left]['x'] - $fragments[$right]['x']);
+                $dy = abs($fragments[$left]['y'] - $fragments[$right]['y']);
+                if ($dy > 90 || $dx > 160) {
+                    continue;
+                }
+                $shared = array_intersect_key($roles[$rootLeft], $roles[$rootRight]);
+                if ($shared !== []) {
+                    continue;
+                }
+                $parent[$rootRight] = $rootLeft;
+                $roles[$rootLeft] += $roles[$rootRight];
+            }
+        }
+
+        $groups = [];
+        foreach ($fragments as $index => $fragment) {
+            $groups[$find($index)][] = $fragment;
+        }
+
+        $devices = [];
+        foreach ($groups as $group) {
+            usort($group, fn (array $a, array $b) => $a['x'] <=> $b['x']);
+            $text = implode(' ', array_map(fn (array $piece) => $piece['t'], $group));
+            $parsed = $this->stampDevice($text);
+            if ($parsed === null) {
+                continue;
+            }
+            $anchor = $group[0];
+            $devices[] = $parsed + [
+                'x' => $anchor['x'],
+                'y' => $anchor['y'],
+                'px' => (float) ($anchor['px'] ?? 0),
+                'py' => (float) ($anchor['py'] ?? 0),
+            ];
+        }
+        if ($devices === []) {
+            return [];
+        }
+
+        $marks = [];
+        foreach ($items as $item) {
+            $mark = $this->boardMark($item['t']);
+            if ($mark !== null) {
+                $marks[] = $mark + ['x' => $item['x'], 'y' => $item['y']];
+            }
+        }
+
+        $drawingOf = range(0, count($devices) - 1);
+        $findDrawing = function (int $index) use (&$drawingOf, &$findDrawing): int {
+            if ($drawingOf[$index] !== $index) {
+                $drawingOf[$index] = $findDrawing($drawingOf[$index]);
+            }
+
+            return $drawingOf[$index];
+        };
+        $deviceCount = count($devices);
+        for ($left = 0; $left < $deviceCount; $left++) {
+            for ($right = $left + 1; $right < $deviceCount; $right++) {
+                $dx = abs($devices[$left]['x'] - $devices[$right]['x']);
+                $dy = abs($devices[$left]['y'] - $devices[$right]['y']);
+                if ($dx < 2200 && $dy < 1000) {
+                    $drawingOf[$findDrawing($right)] = $findDrawing($left);
+                }
+            }
+        }
+        $drawings = [];
+        foreach ($devices as $index => $device) {
+            $drawings[$findDrawing($index)][] = $device;
+        }
+
+        $usedMarks = [];
+        $drawingMeta = [];
+        foreach ($drawings as $id => $list) {
+            $minX = min(array_column($list, 'x'));
+            $maxX = max(array_column($list, 'x'));
+            $minY = min(array_column($list, 'y'));
+            $maxY = max(array_column($list, 'y'));
+            $copies = 0;
+            $prefix = null;
+            $suffixes = [];
+            foreach ($marks as $markIndex => $mark) {
+                if ($mark['x'] < $minX - 1600 || $mark['x'] > $maxX + 1600) {
+                    continue;
+                }
+                if ($mark['y'] < $minY - 1800 || $mark['y'] > $maxY + 400) {
+                    continue;
+                }
+                $usedMarks[$markIndex] = true;
+                $copies += $mark['copies'];
+                $prefix = $mark['name'];
+                if ($mark['suffix'] !== '') {
+                    foreach (explode(', ', $mark['suffix']) as $suffix) {
+                        $suffixes[] = $suffix;
+                    }
+                }
+            }
+            $drawingMeta[$id] = [
+                'copies' => max(1, $copies),
+                'prefix' => $prefix ?? $this->looseBoardName($items),
+                'suffixes' => $suffixes,
+                'devices' => $list,
+            ];
+        }
+
+        if (count($drawings) === 1) {
+            $only = array_key_first($drawingMeta);
+            $extra = 0;
+            $prefix = $drawingMeta[$only]['prefix'];
+            foreach ($marks as $markIndex => $mark) {
+                if (isset($usedMarks[$markIndex]) || $mark['name'] !== $prefix) {
+                    continue;
+                }
+                $extra += $mark['copies'];
+                if ($mark['suffix'] !== '') {
+                    foreach (explode(', ', $mark['suffix']) as $suffix) {
+                        $drawingMeta[$only]['suffixes'][] = $suffix;
+                    }
+                }
+            }
+            if ($extra > 0) {
+                $drawingMeta[$only]['copies'] = max($drawingMeta[$only]['copies'], $extra);
+            }
+        }
+
+        $signature = function (array $list): string {
+            $parts = [];
+            foreach ($list as $device) {
+                $parts[] = $device['role'].'|'.$device['poles'].'|'.$device['current'].'|'.$device['curve'];
+            }
+            sort($parts);
+
+            return implode(';', $parts);
+        };
+        $merged = [];
+        foreach ($drawingMeta as $meta) {
+            $key = $meta['prefix'].'|'.$signature($meta['devices']);
+            if (! isset($merged[$key])) {
+                $merged[$key] = $meta;
+                continue;
+            }
+            $merged[$key]['copies'] += $meta['copies'];
+            $merged[$key]['suffixes'] = array_merge($merged[$key]['suffixes'], $meta['suffixes']);
+        }
+
+        $named = [];
+        $orphans = [];
+        foreach ($merged as $key => $meta) {
+            if ($meta['prefix'] === 'Табло') {
+                $orphans[$key] = $meta;
+                continue;
+            }
+            $named[$key] = $meta;
+        }
+        foreach ($orphans as $key => $meta) {
+            $signatureKey = explode('|', $key, 2)[1] ?? '';
+            $host = null;
+            foreach (array_keys($named) as $namedKey) {
+                if ((explode('|', $namedKey, 2)[1] ?? '') === $signatureKey) {
+                    $host = $namedKey;
+                    break;
+                }
+            }
+            if ($host === null) {
+                continue;
+            }
+            $named[$host]['copies'] += $meta['copies'];
+            unset($orphans[$key]);
+        }
+        if (count($named) === 1 && $orphans !== []) {
+            $host = array_key_first($named);
+            foreach ($orphans as $meta) {
+                $named[$host]['devices'] = array_merge($named[$host]['devices'], $meta['devices']);
+            }
+            $orphans = [];
+        }
+        foreach ($orphans as $key => $meta) {
+            $named[$key] = $meta;
+        }
+        foreach ($marks as $markIndex => $mark) {
+            if (isset($usedMarks[$markIndex]) || $mark['suffix'] === '') {
+                continue;
+            }
+            $hosts = [];
+            foreach ($named as $namedKey => $meta) {
+                if ($meta['prefix'] === $mark['name']) {
+                    $hosts[] = $namedKey;
+                }
+            }
+            if (count($hosts) !== 1) {
+                continue;
+            }
+            foreach (explode(', ', $mark['suffix']) as $suffix) {
+                $named[$hosts[0]]['suffixes'][] = $suffix;
+            }
+        }
+
+        $rows = [];
+        foreach ($named as $meta) {
+            $name = $this->joinedBoardName($meta['prefix'], $meta['suffixes']);
+            foreach ($meta['devices'] as $device) {
+                $rows[] = $this->row($device, $name, $path) + ['copies' => $meta['copies']];
+            }
+        }
+
+        return $rows;
+    }
+
+    private function stampRole(string $text): ?string
+    {
+        $text = trim($text);
+        if (preg_match('/^(Easy\s*9|HAGER|C120)$/ui', $text) === 1) {
+            return 'brand';
+        }
+        if (preg_match('/^[BCD]$/u', $text) === 1) {
+            return 'curve';
+        }
+        if (preg_match('/^\d+P(\+N)?$/i', $text) === 1) {
+            return 'poles';
+        }
+        if (preg_match('/^\d+\s*A$/i', $text) === 1 || preg_match('/^\d+A\s+Тип/ui', $text) === 1) {
+            return 'current';
+        }
+        if (preg_match('/30\s*mA/i', $text) === 1) {
+            return 'residual';
+        }
+        if (preg_match('/230\s*VAC/i', $text) === 1) {
+            return 'coil';
+        }
+        if (preg_match('/PRF|12[,.]5/i', $text) === 1) {
+            return 'spd';
+        }
+        if (preg_match('/^C,\s*1P$/i', $text) === 1) {
+            return 'legend';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string}|null
+     */
+    private function stampDevice(string $text): ?array
+    {
+        $flat = trim(preg_replace('/\s+/', ' ', str_replace(['А', 'С', 'В'], ['A', 'C', 'B'], $text)) ?? $text);
+        if (preg_match('/C,\s*1P/i', $flat) === 1 && preg_match('/mA/i', $flat) !== 1) {
+            return null;
+        }
+        if (preg_match('/PRF|12[,.]5|C120/i', $flat) === 1) {
+            return null;
+        }
+        if (preg_match('/1P\+N/i', $flat) === 1 && preg_match('/(\d+)\s*A/i', $flat, $amp) === 1 && preg_match('/30\s*mA/i', $flat) === 1) {
+            $curve = preg_match('/\b([BCD])\b/', $flat, $curveMatch) === 1 ? $curveMatch[1] : 'C';
+
+            return $this->parsed($curve.$amp[1].'A/1+N', 'ДТЗ', 2, (int) $amp[1], $curve, 'rcd');
+        }
+        if (preg_match('/2P/i', $flat) === 1 && preg_match('/(\d+)\s*A/i', $flat, $amp) === 1 && preg_match('/30\s*mA/i', $flat) === 1) {
+            return $this->parsed($amp[1].'A/2P/30mA AC', 'ДТЗ', 2, (int) $amp[1], null, 'rcd');
+        }
+        if (preg_match('/230\s*VAC/i', $flat) === 1 && preg_match('/(\d+)\s*A/i', $flat, $amp) === 1) {
+            return $this->parsed($amp[1].'A/230VAC', 'КОНТ', 2, (int) $amp[1], null, 'contactor');
+        }
+        if (preg_match('/(\d+)\s*P/i', $flat, $poles) === 1 && preg_match('/(\d+)\s*A/i', $flat, $amp) === 1 && preg_match('/\b([BCD])\b/', $flat, $curve) === 1) {
+            $poleCount = (int) $poles[1];
+            if ($poleCount > 4) {
+                return null;
+            }
+
+            return $this->parsed($amp[1].'A/'.$poleCount.'P/'.$curve[1], 'МАП', $poleCount, (int) $amp[1], $curve[1], 'breaker');
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{name: string, suffix: string, copies: int}|null
+     */
+    private function boardMark(string $text): ?array
+    {
+        $text = trim(str_replace(['\\', ';', ';', '­', "\u{00a0}"], ['', ',', ',', '', ' '], $text));
+        if (preg_match('/^Тск\.?\s*(\d+)\b/u', $text, $match) === 1) {
+            return ['name' => 'Тск', 'suffix' => $match[1], 'copies' => 1];
+        }
+        if (preg_match('/^Тап\.?\s*([\d\s,]+)/u', $text, $match) === 1) {
+            preg_match_all('/\d+/', $match[1], $numbers);
+            if ($numbers[0] === []) {
+                return null;
+            }
+
+            return ['name' => 'Тап', 'suffix' => implode(', ', $numbers[0]), 'copies' => count($numbers[0])];
+        }
+        if (preg_match('/^ТГ\s*(\d+(?:\.\d+)?)/u', $text, $match) === 1) {
+            return ['name' => 'ТГ', 'suffix' => $match[1], 'copies' => 1];
+        }
+        if (preg_match('/^Тгар/u', $text) === 1) {
+            return ['name' => 'Тгар', 'suffix' => '', 'copies' => 1];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array{t: string}>  $items
+     */
+    private function looseBoardName(array $items): string
+    {
+        $tokens = [];
+        foreach ($items as $item) {
+            $token = trim($item['t']);
+            if ($token === 'Т' || $token === 'o.' || $token === 'о.' || $token === 'н' || $token === '.') {
+                $tokens[] = $token;
+            }
+        }
+        $joined = implode('', $tokens);
+        if (str_contains($joined, 'о') || str_contains($joined, 'o')) {
+            return 'Т о.н.';
+        }
+
+        return 'Табло';
+    }
+
+    /**
+     * @param  list<string>  $suffixes
+     */
+    private function joinedBoardName(string $prefix, array $suffixes): string
+    {
+        $suffixes = array_values(array_unique(array_filter($suffixes, fn (string $suffix) => $suffix !== '')));
+        if ($suffixes === []) {
+            return $prefix;
+        }
+        usort($suffixes, fn (string $a, string $b) => strnatcmp($a, $b));
+        $dotted = $prefix === 'Тск' || $prefix === 'Тап';
+
+        return $prefix.($dotted ? '.' : '').implode(', ', $suffixes);
     }
 }

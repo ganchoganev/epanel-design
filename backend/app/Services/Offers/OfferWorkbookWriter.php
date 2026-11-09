@@ -3,6 +3,7 @@
 namespace App\Services\Offers;
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\Color;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
 
@@ -58,6 +59,7 @@ class OfferWorkbookWriter
                 $sheet->setCellValue('C'.$row, $line->name);
                 $sheet->setCellValue('D'.$row, $line->quantity);
                 $sheet->setCellValue('E'.$row, $line->unitPrice);
+                $sheet->getStyle('B'.$row.':E'.$row)->getFont()->getColor()->setARGB(Color::COLOR_BLACK);
             }
         }
 
