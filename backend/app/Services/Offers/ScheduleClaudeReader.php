@@ -6,6 +6,7 @@ use App\Models\ScheduleMap;
 use App\Services\Claude\ClaudeClient;
 use Illuminate\Http\UploadedFile;
 use RuntimeException;
+use Throwable;
 
 /**
  * Claude reads the drawings. It never sees the ETI catalog and never returns catalog numbers.
@@ -29,10 +30,15 @@ class ScheduleClaudeReader
         }
 
         $table = [];
+        $notes = [];
         foreach ($files as $file) {
             $path = $file->getRealPath();
             if ($path === false) {
                 continue;
+            }
+            $note = $this->tables->sheetNote($path);
+            if ($note !== '') {
+                $notes[$note] = true;
             }
             foreach ($this->tables->rows($path) as $row) {
                 $row['file'] = $file->getClientOriginalName();
@@ -44,7 +50,10 @@ class ScheduleClaudeReader
         }
 
         if ($table !== []) {
-            return $this->fromTable($table, '');
+            $read = $this->fromTable($table, '');
+            $read['sheet_note'] = implode(' ', array_keys($notes));
+
+            return $read;
         }
         if ($tiles === []) {
             throw new RuntimeException('NEEDS_TILES');
@@ -133,6 +142,10 @@ class ScheduleClaudeReader
 - Номиналът може да е на части: 50, А, /1P/C. Събери ги в един ред.
 - 16A/1P/C е МАП 1p C16. 250A/3P и тип ПЛК е ПЛК.
 - Таблото е най-близкото „ГЕТ А“ или „ГЕТ Б“.
+- Колоната „Тип табло“ с „тип 1“ до „тип 4“ е означение на извода, не ново табло. „РТ“ в описанието е бележка към реда, не тип прекъсвач.
+- „8бр.“, „11бр.“ и подобни до кабелните редове са брой кабели. Сложи ги в unread и не ги брой като прекъсвач.
+- Ако двете таблици на листа имат едни и същи редове, това е едно табло, начертано два пъти. Ако редовете се различават, това са две секции на същото табло.
+- „4 жилищни сгради“ и етапите в антетката описват обекта. Не умножавай броя на таблата по тях.
 
 3) Еднолинейна схема без таблица. Номиналът е от отделни думи до символа: Easy 9, C, 1P, 16A, 30mA AC, 1P+N, 2P, 25A Тип AC, 230VAC.
 - C + 1P + 16A е МАП 1p C16. B + 3P + 25A е МАП 3p B25. C10A и 1P е същото.
@@ -279,9 +292,13 @@ TEXT;
         $unread = [];
         foreach ($table as $row) {
             $board = $boards[$row['n']] ?? $row['board'];
-            $remembered = ScheduleMap::query()
-                ->where('signature', ScheduleMap::signature($row['text']))
-                ->exists();
+            try {
+                $remembered = ScheduleMap::query()
+                    ->where('signature', ScheduleMap::signature($row['text']))
+                    ->exists();
+            } catch (Throwable) {
+                $remembered = false;
+            }
             if ($remembered || $row['kind'] === 'МАП' || $row['kind'] === 'ПЛК' || $row['role'] === 'rcd' || $row['role'] === 'thermal') {
                 $kind = $row['kind'] ?? ($row['role'] === 'thermal' ? 'ТЗ' : ($row['role'] === 'rcd' ? 'ДТЗ' : 'АПАРАТ'));
                 $circuits[] = new ScheduleCircuit(
@@ -295,6 +312,7 @@ TEXT;
                     (float) ($row['y'] ?? 0),
                     (string) ($row['file'] ?? ''),
                     $this->copies($board, (int) ($row['copies'] ?? 1)),
+                    (string) ($row['note'] ?? ''),
                 );
                 continue;
             }
@@ -332,6 +350,7 @@ TEXT;
         return match ($role) {
             'rcd' => 'Ред '.$text.' от таблицата е дефектнотокова защита. Не се мапва към автоматичен прекъсвач на ETI.',
             'thermal' => 'Ред '.$text.' от таблицата е термореле. Не се мапва към автоматичен прекъсвач на ETI.',
+            'cable' => 'Надпис '.$text.' е брой кабели до извода, не апарат.',
             default => 'Ред '.$text.' от таблицата не е автоматичен прекъсвач и няма код на ETI.',
         };
     }

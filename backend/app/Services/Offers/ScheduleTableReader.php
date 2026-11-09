@@ -8,21 +8,49 @@ namespace App\Services\Offers;
  */
 class ScheduleTableReader
 {
+    /** @var array<string, list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float, note?: string}>> */
+    private array $cachedRows = [];
+
+    /** @var array<string, string> */
+    private array $sheetNotes = [];
+
     public function __construct(private readonly AutocadScheduleParser $parser) {}
 
     /**
-     * @return list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float}>
+     * @return list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float, note?: string}>
      */
     public function rows(string $path): array
     {
+        if (! array_key_exists($path, $this->cachedRows)) {
+            $this->cachedRows[$path] = $this->readRows($path);
+        }
+
+        return $this->cachedRows[$path];
+    }
+
+    public function sheetNote(string $path): string
+    {
+        $this->rows($path);
+
+        return $this->sheetNotes[$path] ?? '';
+    }
+
+    /**
+     * @return list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float, note?: string}>
+     */
+    private function readRows(string $path): array
+    {
+        $this->sheetNotes[$path] = '';
         $items = $this->parser->textItems($path);
         if ($items === []) {
             return [];
         }
 
         $columns = $this->breakerColumns($items, $path);
-        if ($columns !== []) {
-            return $this->numbered($columns);
+        if ($columns['rows'] !== []) {
+            $this->sheetNotes[$path] = trim($columns['note'].' '.$this->projectNote($items));
+
+            return $this->numbered($columns['rows']);
         }
 
         $legendX = null;
@@ -106,7 +134,7 @@ class ScheduleTableReader
      * One sheet can hold two such tables. A rating may be split across glyphs, as 50 + А + /1P/C.
      *
      * @param  list<array{x: float, y: float, px?: float, py?: float, t: string}>  $items
-     * @return list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float}>
+     * @return array{rows: list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float, note?: string}>, note: string}
      */
     private function breakerColumns(array $items, string $path): array
     {
@@ -120,10 +148,11 @@ class ScheduleTableReader
             }
         }
         if ($ratingHeaders === []) {
-            return [];
+            return ['rows' => [], 'note' => ''];
         }
+        usort($ratingHeaders, fn (array $a, array $b) => $a['x'] <=> $b['x']);
 
-        $rows = [];
+        $sections = [];
         foreach ($ratingHeaders as $header) {
             $typeHeader = null;
             foreach ($typeHeaders as $candidate) {
@@ -134,18 +163,251 @@ class ScheduleTableReader
                 }
             }
             $board = $this->sectionBoard($items, $header);
+            $boardTypeX = $this->headerX($items, 'Тип табло', $header);
+            $consumerX = $this->headerX($items, 'Описание на потребител', $header);
             $cells = $this->columnCells($items, $header['x'], $header['y']);
             $types = $typeHeader === null ? [] : $this->columnCells($items, $typeHeader['x'], $typeHeader['y']);
+            $rows = [];
             foreach ($cells as $cell) {
                 $parsed = $this->columnRating($cell['text'], $this->typeNear($types, $cell['y']));
                 if ($parsed === null) {
                     continue;
                 }
-                $rows[] = $this->row($parsed + $cell, $board, $path);
+                $note = $this->outletNote(
+                    $this->boardTypeAt($items, $boardTypeX, $cell['y']),
+                    $this->cellNear($items, $consumerX, $cell['y']),
+                );
+                $rows[] = $this->row($parsed + $cell + ['note' => $note], $board, $path);
+            }
+            foreach ($this->cableRows($items, $header, $ratingHeaders, $board, $path) as $cable) {
+                $rows[] = $cable;
+            }
+            $sections[] = ['board' => $board, 'rows' => $rows];
+        }
+
+        return $this->finishSections($sections);
+    }
+
+    /**
+     * The same schedule is sometimes drawn twice. Matching tables stay one board.
+     * Different tables are two sections of that board, not a count of buildings.
+     *
+     * @param  list<array{board: string, rows: list<array{board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, note?: string}>}>  $sections
+     * @return array{rows: list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float, note?: string}>, note: string}
+     */
+    private function finishSections(array $sections): array
+    {
+        $signatures = [];
+        foreach ($sections as $section) {
+            $keys = [];
+            foreach ($section['rows'] as $row) {
+                $keys[] = ($row['kind'] ?? '').'|'.$row['poles'].'|'.$row['current'].'|'.($row['curve'] ?? '').'|'.$row['role'].'|'.$row['text'].'|'.($row['note'] ?? '');
+            }
+            sort($keys);
+            $signatures[] = implode("\n", $keys);
+        }
+        $note = '';
+        if (count($sections) > 1 && count(array_unique($signatures)) === 1) {
+            $note = 'Двете таблици на листа съвпадат и се броят като едно табло.';
+            $sections = [$sections[0]];
+        } elseif (count(array_unique($signatures)) > 1) {
+            foreach ($sections as $index => $section) {
+                $name = $section['board'].' секция '.($index + 1);
+                foreach ($section['rows'] as $rowIndex => $row) {
+                    $sections[$index]['rows'][$rowIndex]['board'] = $name;
+                }
             }
         }
 
+        $rows = [];
+        foreach ($sections as $section) {
+            foreach ($section['rows'] as $row) {
+                $rows[] = $row;
+            }
+        }
+
+        return ['rows' => $rows, 'note' => $note];
+    }
+
+    /**
+     * @param  list<array{x: float, y: float, px?: float, py?: float, t: string}>  $items
+     * @param  array{x: float, y: float}  $ratingHeader
+     */
+    private function headerX(array $items, string $label, array $ratingHeader): ?float
+    {
+        foreach ($items as $item) {
+            if ($item['t'] !== $label) {
+                continue;
+            }
+            if (abs($item['y'] - $ratingHeader['y']) > 120) {
+                continue;
+            }
+            $dx = $item['x'] - $ratingHeader['x'];
+            if ($dx > -400 && $dx < 1600) {
+                return $item['x'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array{x: float, y: float, t: string}>  $items
+     */
+    private function cellNear(array $items, ?float $columnX, float $y): string
+    {
+        if ($columnX === null) {
+            return '';
+        }
+        $pieces = [];
+        foreach ($items as $item) {
+            if (abs($item['x'] - $columnX) > 90 || abs($item['y'] - $y) > 180) {
+                continue;
+            }
+            $pieces[] = $item;
+        }
+        usort($pieces, fn (array $a, array $b) => $b['y'] <=> $a['y']);
+
+        return trim(implode('', array_map(fn (array $piece) => $piece['t'], $pieces)));
+    }
+
+    /**
+     * The digit of „тип 3“ sits below the word, past the rating glyph.
+     *
+     * @param  list<array{x: float, y: float, t: string}>  $items
+     */
+    private function boardTypeAt(array $items, ?float $columnX, float $y): string
+    {
+        if ($columnX === null) {
+            return '';
+        }
+        $labelY = null;
+        foreach ($items as $item) {
+            if (abs($item['x'] - $columnX) > 90 || abs($item['y'] - $y) > 180) {
+                continue;
+            }
+            if (preg_match('/^тип$/ui', trim($item['t'])) === 1) {
+                $labelY = $item['y'];
+                break;
+            }
+        }
+        if ($labelY === null) {
+            return '';
+        }
+        $digit = '';
+        $bestDy = null;
+        foreach ($items as $item) {
+            if (abs($item['x'] - $columnX) > 90) {
+                continue;
+            }
+            $dy = $labelY - $item['y'];
+            if ($dy < 40 || $dy > 280 || preg_match('/^\d+$/', trim($item['t'])) !== 1) {
+                continue;
+            }
+            if ($bestDy === null || $dy < $bestDy) {
+                $digit = trim($item['t']);
+                $bestDy = $dy;
+            }
+        }
+
+        return $digit === '' ? '' : 'тип '.$digit;
+    }
+
+    private function outletNote(string $boardType, string $consumer): string
+    {
+        $parts = [];
+        $compact = preg_replace('/\s+/u', '', $boardType) ?? $boardType;
+        if (preg_match('/^тип(\d+)$/ui', $compact, $match) === 1) {
+            $parts[] = 'тип '.$match[1];
+        }
+        $consumer = trim($consumer);
+        if ($consumer !== '' && $consumer !== '-' && preg_match('/тип\s*\d+|прекъсвач|описание|потребител|ГЕТ|секция/ui', $consumer) !== 1) {
+            $parts[] = $consumer;
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * „8бр.“ beside the cable rows is a cable count. It belongs to the table on its left.
+     *
+     * @param  list<array{x: float, y: float, px?: float, py?: float, t: string}>  $items
+     * @param  array{x: float, y: float}  $header
+     * @param  list<array{x: float, y: float}>  $headers
+     * @return list<array{n: int, board: string, text: string, kind: ?string, poles: int, current: int, curve: ?string, role: string, x: float, y: float}>
+     */
+    private function cableRows(array $items, array $header, array $headers, string $board, string $path): array
+    {
+        $rows = [];
+        foreach ($items as $item) {
+            $compact = str_replace(' ', '', $item['t']);
+            if (preg_match('/^(\d+)бр\.?$/u', $compact, $match) !== 1) {
+                continue;
+            }
+            $left = null;
+            foreach ($headers as $candidate) {
+                if ($candidate['x'] < $item['x'] && ($left === null || $candidate['x'] > $left['x'])) {
+                    $left = $candidate;
+                }
+            }
+            if ($left === null || abs($left['x'] - $header['x']) > 1) {
+                continue;
+            }
+            $parsed = $this->parsed($match[1].' бр. кабели', null, 0, 0, null, 'cable');
+            $rows[] = $this->row($parsed + $item, $board, $path);
+        }
+
         return $rows;
+    }
+
+    /**
+     * Buildings and stages in the title block describe the site. They are not a board quantity.
+     *
+     * @param  list<array{x: float, y: float, t: string}>  $items
+     */
+    private function projectNote(array $items): string
+    {
+        $buildings = '';
+        $staged = false;
+        $stage = '';
+        $subobject = '';
+        foreach ($items as $item) {
+            $text = trim($item['t']);
+            if (preg_match('/(\d+)\s+жилищни сгради/u', $text, $match) === 1) {
+                $buildings = $match[1].' жилищни сгради';
+            }
+            if (preg_match('/етапно изграждане/u', $text) === 1) {
+                $staged = true;
+            }
+            if ($text === 'Втори етап') {
+                $stage = 'втори етап';
+            }
+        }
+        foreach ($items as $item) {
+            if (trim($item['t']) !== 'подобект:') {
+                continue;
+            }
+            foreach ($items as $other) {
+                $letter = trim($other['t']);
+                if (preg_match('/^[А-Я]$/u', $letter) !== 1) {
+                    continue;
+                }
+                if (abs($other['y'] - $item['y']) < 80 && abs($other['x'] - $item['x']) < 600) {
+                    $subobject = 'подобект '.$letter;
+                }
+            }
+        }
+        $parts = array_values(array_filter([
+            $buildings,
+            $staged ? 'етапно изграждане' : '',
+            $subobject,
+            $stage,
+        ]));
+        if ($parts === []) {
+            return '';
+        }
+
+        return 'Антетката описва '.implode(', ', $parts).'. Броят на таблата не се умножава по сградите и етажите.';
     }
 
     /**
@@ -245,14 +507,14 @@ class ScheduleTableReader
     {
         $text = str_replace(['А', 'С', 'В', ' '], ['A', 'C', 'B', ''], trim($text));
         $type = mb_strtoupper(trim($type));
-        if (preg_match('/^(\d+)A\/(\d+)P\/(\d+)mA/i', $text, $match) === 1) {
-            return $this->parsed($text, null, (int) $match[2], (int) $match[1], null, 'rcd');
+        if (preg_match('/(\d+)A\/(\d+)P\/(\d+)mA/i', $text, $match) === 1) {
+            return $this->parsed($match[0], null, (int) $match[2], (int) $match[1], null, 'rcd');
         }
-        if (preg_match('/^(\d+)A\/(\d+)P\/([BCD])$/', $text, $match) === 1) {
+        if (preg_match('/(\d+)A\/(\d+)P\/([BCD])/', $text, $match) === 1) {
             $kind = $type === 'ПЛК' ? 'ПЛК' : 'МАП';
 
             return $this->parsed(
-                $text,
+                $match[0],
                 $kind,
                 (int) $match[2],
                 (int) $match[1],
@@ -260,11 +522,11 @@ class ScheduleTableReader
                 $kind === 'ПЛК' ? 'mccb' : 'breaker',
             );
         }
-        if (preg_match('/^(\d+)A\/(\d+)P$/', $text, $match) === 1 && ($type === 'ПЛК' || $type === 'МАП')) {
+        if (preg_match('/(\d+)A\/(\d+)P/', $text, $match) === 1 && ($type === 'ПЛК' || $type === 'МАП')) {
             $kind = $type === 'ПЛК' ? 'ПЛК' : 'МАП';
 
             return $this->parsed(
-                $text,
+                $match[0],
                 $kind,
                 (int) $match[2],
                 (int) $match[1],
@@ -310,6 +572,7 @@ class ScheduleTableReader
             'role' => $rating['role'],
             'x' => $x,
             'y' => $y,
+            'note' => (string) ($rating['note'] ?? ''),
         ];
     }
 

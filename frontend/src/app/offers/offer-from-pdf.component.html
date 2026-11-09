@@ -161,11 +161,20 @@
             @for (group of fileGroups(file); track group.key) {
               <tr [class.missing]="!group.catalog_number">
                 <td>{{ group.board }}</td>
-                <td>{{ group.device_type }} {{ group.rating }}</td>
+                <td>{{ group.device_type }} {{ group.rating }}{{ group.note ? ' · ' + group.note : '' }}</td>
                 <td>{{ group.quantity }}</td>
                 <td>
-                  <input [value]="group.catalog_number ?? ''" [placeholder]="group.catalog_number ? '' : 'въведи код'" #fileCode />
+                  <input [value]="group.catalog_number ?? ''" placeholder="въведи код" #fileCode />
                   <button type="button" (click)="applyGroup(group, fileCode.value)">Запиши</button>
+                  @if (!group.catalog_number && group.options.length) {
+                    <select class="pick" #filePick>
+                      <option value="">избери от съвпаденията</option>
+                      @for (option of group.options; track option.catalog_number) {
+                        <option [value]="option.catalog_number">{{ option.catalog_number }} · {{ option.name }}</option>
+                      }
+                    </select>
+                    <button type="button" (click)="chooseGroup(group, filePick.value)">Избери</button>
+                  }
                 </td>
                 <td>{{ group.catalog_number ? group.name : (group.reason || 'Без код — въведи преди офертата') }}</td>
               </tr>
@@ -220,11 +229,20 @@
         @for (group of groups(); track group.key) {
           <tr [class.missing]="!group.catalog_number">
             <td>{{ group.board }}</td>
-            <td>{{ group.device_type }} {{ group.rating }}</td>
+            <td>{{ group.device_type }} {{ group.rating }}{{ group.note ? ' · ' + group.note : '' }}</td>
             <td>{{ group.quantity }}</td>
             <td>
-              <input [value]="group.catalog_number ?? ''" [placeholder]="group.catalog_number ? '' : 'въведи код'" #codeField />
+              <input [value]="group.catalog_number ?? ''" placeholder="въведи код" #codeField />
               <button type="button" (click)="applyGroup(group, codeField.value)">Запиши</button>
+              @if (!group.catalog_number && group.options.length) {
+                <select class="pick" #codePick>
+                  <option value="">избери от съвпаденията</option>
+                  @for (option of group.options; track option.catalog_number) {
+                    <option [value]="option.catalog_number">{{ option.catalog_number }} · {{ option.name }}</option>
+                  }
+                </select>
+                <button type="button" (click)="chooseGroup(group, codePick.value)">Избери</button>
+              }
             </td>
             <td>{{ group.catalog_number ? group.name : (group.reason || 'Без код — въведи преди офертата') }}</td>
           </tr>

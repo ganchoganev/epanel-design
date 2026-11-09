@@ -71,10 +71,35 @@ class ScheduleTableReaderTest extends TestCase
 
         foreach ($boards as $name => $byBoard) {
             $expected = str_starts_with($name, '02-') ? 'ГЕТ А' : 'ГЕТ Б';
-            $this->assertSame([$expected], array_keys($byBoard), $name);
-            $this->assertSame(2, $byBoard[$expected]['ПЛК|3|250|'] ?? 0, $name);
-            $this->assertGreaterThan(10, $byBoard[$expected]['МАП|1|16|C'] ?? 0, $name);
-            $this->assertGreaterThan(0, $byBoard[$expected]['МАП|1|50|C'] ?? 0, $name);
+            $sections = array_keys($byBoard);
+            sort($sections);
+            $this->assertNotEmpty($sections, $name);
+            foreach ($sections as $section) {
+                $this->assertStringStartsWith($expected, $section, $name);
+                $this->assertSame(1, $byBoard[$section]['ПЛК|3|250|'] ?? 0, $section);
+            }
+            $cables = 0;
+            $typed = 0;
+            foreach ($reader->rows($paths[$name]) as $row) {
+                if ($row['role'] === 'cable') {
+                    $cables++;
+                    $this->assertStringContainsString('бр. кабели', $row['text']);
+                }
+                if (str_contains((string) ($row['note'] ?? ''), 'тип ') && str_contains((string) ($row['note'] ?? ''), 'РТ')) {
+                    $typed++;
+                }
+            }
+            $this->assertGreaterThan(0, $cables, $name);
+            $this->assertGreaterThan(0, $typed, $name);
+            $this->assertStringContainsString('не се умножава', $reader->sheetNote($paths[$name]));
+            $sixteen = 0;
+            $fifty = 0;
+            foreach ($byBoard as $counts) {
+                $sixteen += $counts['МАП|1|16|C'] ?? 0;
+                $fifty += $counts['МАП|1|50|C'] ?? 0;
+            }
+            $this->assertGreaterThan(10, $sixteen, $name);
+            $this->assertGreaterThan(0, $fifty, $name);
         }
     }
 

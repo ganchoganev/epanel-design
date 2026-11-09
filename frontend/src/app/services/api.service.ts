@@ -236,6 +236,7 @@ export interface SchedulePlacement {
   catalog_number: string | null;
   name: string | null;
   unit_price: number | null;
+  note?: string;
 }
 
 /** Result of reading a designer PDF into an ETI offer. */
@@ -251,6 +252,7 @@ export interface ScheduleOffer {
     device_type: string;
     quantity: number;
     reason: string;
+    options?: Array<{ catalog_number: string; name: string; unit_price: number | null }>;
   }>;
   unread: Array<{
     board: string;

@@ -15,5 +15,6 @@ class ScheduleCircuit
         public readonly float $pageY = 0,
         public readonly string $sourceFile = '',
         public readonly int $copies = 1,
+        public readonly string $note = '',
     ) {}
 }

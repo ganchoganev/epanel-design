@@ -66,6 +66,8 @@ interface TypeGroup {
   catalog_number: string | null;
   name: string | null;
   reason: string;
+  note: string;
+  options: Array<{ catalog_number: string; name: string; unit_price: number | null }>;
 }
 
 @Component({
@@ -384,10 +386,13 @@ export class OfferFromPdfComponent {
           catalog_number: mark.catalog_number,
           name: mark.name,
           reason: this.reasonFor(offer, mark.board, mark.device_type, mark.rating),
+          note: this.noteLabel(mark.note ?? ''),
+          options: this.optionsFor(offer, mark.board, mark.device_type, mark.rating),
         });
         continue;
       }
       group.quantity++;
+      group.note = this.joinNotes(group.note, mark.note ?? '');
       if (group.catalog_number !== mark.catalog_number) {
         group.catalog_number = null;
         group.name = null;
@@ -547,7 +552,7 @@ export class OfferFromPdfComponent {
         x: mark.x * 100,
         y: mark.y * 100,
         ok: !!mark.catalog_number,
-        label: mark.catalog_number ? `${mark.rating} · ${mark.catalog_number}` : `${mark.rating} · без код`,
+        label: `${mark.rating}${mark.note ? ' · ' + mark.note : ''} · ${mark.catalog_number ? mark.catalog_number : 'без код'}`,
       });
     }
     offer.unread.forEach((row, index) => {
@@ -576,10 +581,13 @@ export class OfferFromPdfComponent {
           catalog_number: mark.catalog_number,
           name: mark.name,
           reason: this.reasonFor(offer, mark.board, mark.device_type, mark.rating),
+          note: this.noteLabel(mark.note ?? ''),
+          options: this.optionsFor(offer, mark.board, mark.device_type, mark.rating),
         });
         continue;
       }
       group.quantity++;
+      group.note = this.joinNotes(group.note, mark.note ?? '');
       if (group.catalog_number !== mark.catalog_number) {
         group.catalog_number = null;
         group.name = null;
@@ -591,6 +599,11 @@ export class OfferFromPdfComponent {
         || a.device_type.localeCompare(b.device_type, 'bg')
         || a.rating.localeCompare(b.rating, 'bg');
     });
+  }
+
+  chooseGroup(group: TypeGroup, raw: string): void {
+    if (raw.trim() === '') return;
+    this.applyGroup(group, raw);
   }
 
   applyGroup(group: TypeGroup, raw: string): void {
@@ -732,10 +745,35 @@ export class OfferFromPdfComponent {
     return { ...current, boards, unmatched, placements };
   }
 
+  private joinNotes(current: string, next: string): string {
+    const notes = new Set(current.split('; ').filter((note) => note !== ''));
+    const label = this.noteLabel(next);
+    if (label !== '') {
+      notes.add(label);
+    }
+    return [...notes].join('; ');
+  }
+
+  private noteLabel(note: string): string {
+    const types = [...note.matchAll(/тип\s+\d+/gu)].map((match) => match[0]);
+    return types.length > 0 ? [...new Set(types)].join(', ') : note;
+  }
+
   private reasonFor(offer: ScheduleOffer, board: string, deviceType: string, rating: string): string {
     return offer.unmatched.find((row) =>
       row.board === board && row.device_type === deviceType && row.rating === rating
     )?.reason ?? '';
+  }
+
+  private optionsFor(
+    offer: ScheduleOffer,
+    board: string,
+    deviceType: string,
+    rating: string,
+  ): TypeGroup['options'] {
+    return offer.unmatched.find((row) =>
+      row.board === board && row.device_type === deviceType && row.rating === rating
+    )?.options ?? [];
   }
 
   private async drawPdfs(): Promise<void> {

@@ -168,6 +168,10 @@ class ScheduleOfferController extends Controller
             }
             $note = 'Таблицата описва '.$tableCount.' елемента. Разпознати са '.$recognized.'. '.$note;
         }
+        $sheetNote = trim((string) ($read['sheet_note'] ?? ''));
+        if ($sheetNote !== '') {
+            $note .= ' '.$sheetNote;
+        }
         if ($read['unread'] !== []) {
             $note .= ' Има надписи от схемата, които не се разчетоха като апарат.';
         }

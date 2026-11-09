@@ -42,6 +42,7 @@ class ScheduleOfferMapper
                     'device_type' => $circuit->deviceType,
                     'quantity' => 0,
                     'reason' => $this->unmatchedReason($circuit),
+                    'options' => $this->suggestions($circuit),
                 ];
                 }
                 $unmatched[$key]['quantity']++;
@@ -117,7 +118,7 @@ class ScheduleOfferMapper
             $rows = $boards[$name];
             uasort($rows, fn (array $a, array $b) => $a['sort'] <=> $b['sort']);
             $lines = array_map(fn (array $row) => $row['line'], array_values($rows));
-            $box = $this->enclosure($modules[$name] ?? 0);
+            $box = preg_match('/^ГЕТ\s+[АБ]/u', $name) === 1 ? null : $this->enclosure($modules[$name] ?? 0);
             if ($box instanceof EtiProduct) {
                 $lines[] = new OfferLine(
                     $box->catalog_number,
@@ -146,6 +147,7 @@ class ScheduleOfferMapper
             'catalog_number' => $code,
             'name' => $name,
             'unit_price' => $price,
+            'note' => $circuit->note,
         ];
     }
 
@@ -215,6 +217,28 @@ class ScheduleOfferMapper
         }
 
         return 'Прочетено '.$label.', но в каталога eti_products има повече от едно изделие с тези параметри. Новият код се добавя от шаблона в „Заменени кодове“.';
+    }
+
+    /**
+     * @return list<array{catalog_number: string, name: string, unit_price: ?float}>
+     */
+    private function suggestions(ScheduleCircuit $circuit): array
+    {
+        $matches = $this->candidates($circuit);
+        if ($matches === null || $matches->isEmpty()) {
+            return [];
+        }
+
+        return $matches
+            ->sortBy(fn (EtiProduct $row) => $row->series.' '.$row->catalog_number)
+            ->take(20)
+            ->map(fn (EtiProduct $row) => [
+                'catalog_number' => $row->catalog_number,
+                'name' => $row->name,
+                'unit_price' => $row->price !== null ? (float) $row->price : null,
+            ])
+            ->values()
+            ->all();
     }
 
     private function candidates(ScheduleCircuit $circuit): ?\Illuminate\Support\Collection
